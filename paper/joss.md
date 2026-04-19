@@ -78,7 +78,7 @@ Optionally, one can apply two post-processing corrections to the energy returned
 **(1) Linear correction:** if the parameters $a$ and $b$ are provided, the energy is corrected using a linear relation in one of two modes:
 
 - Total energy: $\qquad E\prime = a\cdot E_{\mathrm{mlip}} + b$
-- Per atom energy: $\qquad \varepsilon_{\mathrm{mlip}} = \frac{E_{\mathrm{mlip}}}{N},\qquad \varepsilon\prime = a\cdot\varepsilon_{\mathrm{mlip}} + b\cdot\qquad E\prime = N\cdot\varepsilon\prime$
+- Per atom energy: $\qquad \varepsilon_{\mathrm{mlip}} = \frac{E_{\mathrm{mlip}}}{N},\qquad \varepsilon\prime = a\cdot\varepsilon_{\mathrm{mlip}} + b,\qquad E\prime = N\cdot\varepsilon\prime$
 
 Note that, in `per_atom` mode, this expression is equivalent to:
 
