@@ -4,7 +4,7 @@
   </picture>
 </h1>
 
-<h1 align="left">IP-Orch</h1>
+<!-- <h1 align="left">IP-Orch</h1> -->
 
 <p align="left">
   <!-- <strong>Python package for orchestrating machine learning interatomic potentials.</strong> -->
