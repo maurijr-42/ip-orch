@@ -1,3 +1,8 @@
+<h1 align="left">
+  <picture>
+    <img alt="IP-Orch Logo" src="docs/ip_orch.svg" width="500">
+  </picture>
+</h1>
 
 <h1 align="left">IP-Orch</h1>
 
