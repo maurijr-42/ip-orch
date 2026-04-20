@@ -67,7 +67,9 @@ IP-Orch focuses on a complementary advantage: orchestrating the same user ASE sc
 
 IP-Orch is designed to run the same user-defined ASE script across multiple models and environments in a simple and reproducible way. It follows three principles: (1) orchestrate rather than prescribe workflows; (2) rely on established tools such as the Atomic Simulation Environment (ASE) `[@ase-paper]` while remaining environment-agnostic; and (3) minimize overhead by executing directly inside each target environment, without additional servers or communication layers.
 
-![IP-Orch architecture.\label{fig:arch}](iporch-architecture.png)
+<!-- ![IP-Orch architecture.\label{fig:arch}](iporch-architecture.png) -->
+
+![IP-Orch architecture](iporch-architecture.svg)
 
 This is implemented through a lightweight and modular architecture, as shown in Figure \label{fig:arch}. A central `ModelFactory` creates ASE calculators from simple aliases, while the CLI handles environment discovery, model selection, and execution. During runtime, IP-Orch iterates over selected (environment, model) pairs and runs the user script inside each environment using `conda run`, ensuring isolation and avoiding dependency conflicts. By delegating performance to the underlying MLIPs, IP-Orch focuses on providing a transparent and low-friction framework for reproducible benchmarking and comparison across models.
 
