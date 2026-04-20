@@ -7,7 +7,7 @@
 <!-- <h1 align="left">IP-Orch</h1> -->
 
 <p align="left">
-  <!-- <strong>Python package for orchestrating machine learning interatomic potentials.</strong> -->
+  <!-- <strong>Python package for orchestrating machine learning interatomic potentials (MLIPs).</strong> -->
   Python package for orchestrating machine learning interatomic potentials.
 </p>
 
@@ -39,6 +39,10 @@
 ## Project
 
 With the rapid growth of Machine Learning Interatomic Potentials (MLIPs) with different architectures and software ecosystems, a fragmented ladscape has been created, where models are often tied to incompatible dependencies and heterogeneous interfaces. In this scenario, IP-Orch is a lightweight Python package for orchestrating multiple MLIPs, allowing reproducible benchmarking and systematic comparison across models using an unified ASE-based workflow.
+
+<p align="left">
+  <img alt="IP-Orch Logo" src="paper/iporch-architecture.svg" width="750">
+</p>
 
 ### Features
 
