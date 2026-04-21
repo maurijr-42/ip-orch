@@ -50,4 +50,3 @@ def repo_url_for_alias(alias: str) -> str:
     if "upet" in a or a.startswith("pet"):
         return MODEL_FAMILY_REPOS["upet"]
     return "-"
-

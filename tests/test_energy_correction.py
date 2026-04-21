@@ -1,8 +1,6 @@
 import pytest
 
-
-from ip_orch.core.energy_correction import apply_linear_correction
-from ip_orch.core.energy_correction import compute_element_reference_energy_shift
+from ip_orch.core.energy_correction import apply_linear_correction, compute_element_reference_energy_shift
 
 
 def test_apply_linear_correction_optional_noop():
@@ -30,9 +28,7 @@ def test_apply_linear_correction_rejects_unknown_mode():
 
 
 def test_compute_element_reference_energy_shift():
-    shift = compute_element_reference_energy_shift(
-        ["Cu", "Cu", "C"], element_energies={"Cu": -3.0, "C": -1.0}
-    )
+    shift = compute_element_reference_energy_shift(["Cu", "Cu", "C"], element_energies={"Cu": -3.0, "C": -1.0})
     assert shift == pytest.approx(-7.0)
 
 

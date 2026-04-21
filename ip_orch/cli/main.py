@@ -4,8 +4,7 @@ from typing import List
 
 from rich.console import Console
 
-from .commands import cmd_add, cmd_remove, cmd_models, cmd_run, cmd_configure
-
+from .commands import cmd_add, cmd_configure, cmd_models, cmd_remove, cmd_run
 
 console = Console()
 
@@ -25,9 +24,7 @@ def main(argv: List[str] = None) -> int:
     )
     parser = argparse.ArgumentParser(
         prog="ip-orch",
-        description=(
-            "IP-ORCH: orchestrate ASE runs across multiple MLIP environments"
-        ),
+        description=("IP-ORCH: orchestrate ASE runs across multiple MLIP environments"),
         usage=(
             "ip-orch [-h]\n"
             "               (--add ENV MODEL | --remove ENV [MODEL ...] | --run SCRIPT |\n"

@@ -1,8 +1,10 @@
-from typing import List, Dict
+from typing import Dict, List
+
 
 def _get_aliases() -> Dict[str, str]:
     try:
         from ..core.model_factory import ModelFactory as _MF
+
         return getattr(_MF, "_ALIASES", {})
     except Exception:
         return {}
@@ -44,7 +46,7 @@ def _dedup_pairs(pairs: List[List[str]]):
 
 
 def _clean_env(name: str) -> str:
-    return (name or "").strip().lstrip('.')
+    return (name or "").strip().lstrip(".")
 
 
 # Known calculator env names and default model suggestions
@@ -81,4 +83,3 @@ PACKAGE_VARIANTS = {
     "deepmd": ["dpa-3.1-3m-ft", "dpa-3.1-mptrj"],
     "sevenn": ["sevennet-omni", "sevennet-l3i5"],
 }
-

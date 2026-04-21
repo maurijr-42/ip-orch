@@ -1,48 +1,42 @@
-import os
-import json
-import tempfile
-import subprocess
 import argparse
-import inspect
+import json
+import os
 import re
-
+import subprocess
 from typing import List
 
-from rich.console import Console
-from rich.table import Table
-from rich.rule import Rule
-from rich.prompt import Prompt, Confirm
-from rich.panel import Panel
-from rich.text import Text
 from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.prompt import Confirm, Prompt
+from rich.table import Table
+from rich.text import Text
 
 from ..config.config_store import (
-    load_config,
-    save_config,
     add_model,
+    load_config,
     remove_model,
+    save_config,
     set_model_status,
 )
-
-from .helpers import (
-    _get_aliases,
-    _canonical_alias,
-    _group_pairs,
-    _dedup_pairs,
-    _clean_env,
-    DEFAULT_MODELS_BY_ENV,
-    PACKAGE_VARIANTS,
-)
-from .repo_map import repo_url_for_alias
 from .env_utils import (
-    _discover_conda_envs,
-    _guess_envs_dir,
-    _discover_envs_from_dir,
     _current_conda_env,
+    _discover_conda_envs,
+    _discover_envs_from_dir,
+    _guess_envs_dir,
     _match_known_token,
     _python_for_env,
 )
-
+from .helpers import (
+    DEFAULT_MODELS_BY_ENV,
+    PACKAGE_VARIANTS,
+    _canonical_alias,
+    _clean_env,
+    _dedup_pairs,
+    _get_aliases,
+    _group_pairs,
+)
+from .repo_map import repo_url_for_alias
 
 console = Console()
 
@@ -66,13 +60,17 @@ def cmd_models(args: argparse.Namespace) -> int:
     aliases = _get_aliases()
     cfg = load_config()
     pairs = _dedup_pairs(cfg.get("full_models", []))
-    configured_aliases = { _canonical_alias(m) for _e, m in pairs }
+    configured_aliases = {_canonical_alias(m) for _e, m in pairs}
 
     rows = [(alias, target) for alias, target in aliases.items()]
 
     if args.contains:
         sub = args.contains.lower()
-        rows = [r for r in rows if sub in r[0].lower() or sub in (r[1] or "").lower() or sub in repo_url_for_alias(r[0]).lower()]
+        rows = [
+            r
+            for r in rows
+            if sub in r[0].lower() or sub in (r[1] or "").lower() or sub in repo_url_for_alias(r[0]).lower()
+        ]
 
     # Show configured aliases first, then the rest; keep alphabetical within groups.
     rows = sorted(rows, key=lambda r: (0 if r[0] in configured_aliases else 1, r[0]))
@@ -90,133 +88,6 @@ def cmd_models(args: argparse.Namespace) -> int:
     return 0
 
 
-def _generate_worker() -> str:
-    content = """
-import sys
-import os
-import importlib.util
-import warnings
-import inspect
-import json
-
-warnings.filterwarnings("ignore")
-
-def main():
-    try:
-        user_script_path = sys.argv[1]
-        calculator_name_arg = sys.argv[2]
-        model_name_arg = sys.argv[3]
-        models_path_arg = sys.argv[4] if len(sys.argv) > 4 else ""
-        repo_root_arg = sys.argv[5] if len(sys.argv) > 5 else ""
-
-        linear_a_arg = sys.argv[6] if len(sys.argv) > 6 else ""
-        linear_b_arg = sys.argv[7] if len(sys.argv) > 7 else ""
-        linear_mode_arg = sys.argv[8] if len(sys.argv) > 8 else "total_energy"
-        elements_arg = sys.argv[9] if len(sys.argv) > 9 else ""
-        element_energies_json_arg = sys.argv[10] if len(sys.argv) > 10 else ""
-        preflight_arg = sys.argv[11] if len(sys.argv) > 11 else ""
-
-        def _to_float(s: str):
-            s = (s or "").strip()
-            return float(s) if s else None
-
-        linear_a = _to_float(linear_a_arg)
-        linear_b = _to_float(linear_b_arg)
-        linear_mode = (linear_mode_arg or "total_energy").strip() or "total_energy"
-        elements_raw = (elements_arg or "").strip()
-        elements = [e.strip() for e in elements_raw.split(",") if e.strip()] if elements_raw else []
-        element_energies_json_arg = (element_energies_json_arg or "").strip()
-        preflight = (preflight_arg or "").strip() in ("1", "true", "True", "yes", "preflight")
-
-        if repo_root_arg and os.path.isdir(repo_root_arg):
-            sys.path.insert(0, repo_root_arg)
-
-        from ip_orch.core.model_factory import ModelFactory
-        from ip_orch.core.energy_correction import (
-            wrap_linear_energy_correction,
-            wrap_reference_energy_correction,
-        )
-        from ase import Atoms
-
-        calc = ModelFactory.create(model_name_arg, models_path=models_path_arg)
-
-        if (linear_a is None) ^ (linear_b is None):
-            raise ValueError("Provide both a and b (or neither).")
-
-        # Optional: compute element reference energies using the MLIP calculator itself.
-        element_energies = None
-        if element_energies_json_arg:
-            try:
-                element_energies = json.loads(element_energies_json_arg)
-            except Exception as exc:
-                raise ValueError(f"Failed to parse element energies JSON: {exc}")
-        elif elements:
-            element_energies = {}
-            for sym in elements:
-                # Single atom in a large non-periodic box.
-                atom = Atoms(sym, positions=[(0.0, 0.0, 0.0)], cell=(20.0, 20.0, 20.0), pbc=False)
-                atom.calc = calc
-                element_energies[sym] = float(atom.get_potential_energy())
-
-        if preflight:
-            print("IPORCH_ELEMENT_ENERGIES=" + json.dumps(element_energies or {}))
-            return
-
-        calc = wrap_linear_energy_correction(calc, a=linear_a, b=linear_b, mode=linear_mode)
-        calc = wrap_reference_energy_correction(calc, element_energies=element_energies)
-
-        if not os.path.exists(user_script_path):
-            print(f"[Worker ERROR] User script not found: {{user_script_path}}")
-            sys.exit(1)
-
-        spec = importlib.util.spec_from_file_location("user_logic", user_script_path)
-        user_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(user_module)
-
-        preferred = [
-            "main",
-            "mlip_entry",
-            "your_function",
-            "calculators_test",
-            "run",
-        ]
-        logic_function = None
-        for name in preferred:
-            fn = getattr(user_module, name, None)
-            if callable(fn):
-                logic_function = fn
-                break
-        if logic_function is None:
-            candidates = [
-                (n, f) for n, f in inspect.getmembers(user_module, inspect.isfunction)
-                if getattr(f, "__module__", None) == "user_logic"
-            ]
-            for _, fn in candidates:
-                try:
-                    if len(inspect.signature(fn).parameters) >= 2:
-                        logic_function = fn
-                        break
-                except Exception:
-                    continue
-        if logic_function is None:
-            names = ", ".join(n for n, _ in candidates) if 'candidates' in locals() else "(none)"
-            print("[Worker ERROR] Could not find a function to run. Define 'mlip_entry(calculator_name, calc)'. Found:", names)
-            sys.exit(1)
-
-        logic_function(calculator_name_arg, calc)
-    except Exception as e:
-        print(f"[Worker ERROR] Failure running {{calculator_name_arg}}: {{e}}")
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
-"""
-    f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".py", prefix="ip-orch_worker_")
-    f.write(content)
-    f.close()
-    return f.name
-
-
 def cmd_run(args: argparse.Namespace) -> int:
     cfg = load_config()
     pairs = _dedup_pairs(cfg.get("full_models", []))
@@ -228,7 +99,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         envs_sel = {_clean_env(x.strip()) for x in args.envs.split(",") if x.strip()}
         selected_pairs = [p for p in pairs if _clean_env(p[0]) in envs_sel]
     elif getattr(args, "models", None):
-        models_sel = { _canonical_alias(x.strip()) for x in args.models.split(",") if x.strip() }
+        models_sel = {_canonical_alias(x.strip()) for x in args.models.split(",") if x.strip()}
         selected_pairs = [p for p in pairs if _canonical_alias(p[1]) in models_sel]
     else:
         console.print("[red]For --run, provide either --envs or --models.")
@@ -252,7 +123,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     linear_cfg_path = getattr(args, "energy_linear_config", None)
     if linear_cfg_path:
         try:
-            with open(linear_cfg_path, "r", encoding="utf-8") as f:
+            with open(linear_cfg_path, encoding="utf-8") as f:
                 linear_cfg = json.load(f) or {}
             # Only fill missing values from config.
             if linear_a is None:
@@ -278,118 +149,117 @@ def cmd_run(args: argparse.Namespace) -> int:
     if isinstance(elements, (list, tuple)):
         elements = ",".join(str(e).strip() for e in elements if str(e).strip())
     elements_enabled = bool(elements)
-    linear_enabled = (linear_a is not None and linear_b is not None)
+    linear_enabled = linear_a is not None and linear_b is not None
     if linear_enabled and linear_mode not in ("total_energy", "per_atom"):
         console.print("[red]--energy-linear-mode must be 'total_energy' or 'per_atom'.")
         return 2
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+    worker_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "core", "worker.py"))
+
     for env_name, model_name in selected_pairs:
-        worker_path = _generate_worker()
-        try:
-            python_bin = _python_for_env(env_name, envs_base_dir)
-            if python_bin:
-                cmd = [
-                    python_bin,
-                    worker_path,
-                    args.script,
-                    env_name,
-                    model_name,
-                    models_path,
-                    repo_root,
+        python_bin = _python_for_env(env_name, envs_base_dir)
+        if python_bin:
+            cmd = [
+                python_bin,
+                worker_path,
+                args.script,
+                env_name,
+                model_name,
+                models_path,
+                repo_root,
+            ]
+        else:
+            cmd = [
+                "conda",
+                "run",
+                "-n",
+                env_name,
+                "python",
+                worker_path,
+                args.script,
+                env_name,
+                model_name,
+                models_path,
+                repo_root,
+            ]
+
+        element_energies = None
+        if elements_enabled:
+            # Preflight to compute per-element reference energies inside the MLIP env,
+            # so we can show the correction term in the panel.
+            preflight_cmd = list(cmd)
+            preflight_cmd.extend(
+                [
+                    "" if linear_a is None else str(linear_a),
+                    "" if linear_b is None else str(linear_b),
+                    str(linear_mode),
+                    str(elements),
+                    "",  # element_energies_json (computed in preflight)
+                    "preflight",
                 ]
-            else:
-                cmd = [
-                    "conda", "run", "-n", env_name,
-                    "python", worker_path,
-                    args.script,
-                    env_name,
-                    model_name,
-                    models_path,
-                    repo_root,
-                ]
-
-            element_energies = None
-            if elements_enabled:
-                # Preflight to compute per-element reference energies inside the MLIP env,
-                # so we can show the correction term in the panel.
-                preflight_cmd = list(cmd)
-                preflight_cmd.extend(
-                    [
-                        "" if linear_a is None else str(linear_a),
-                        "" if linear_b is None else str(linear_b),
-                        str(linear_mode),
-                        str(elements),
-                        "",  # element_energies_json (computed in preflight)
-                        "preflight",
-                    ]
-                )
-                pre = subprocess.run(preflight_cmd, text=True, capture_output=True)
-                if pre.returncode != 0:
-                    console.print(f"[red]Failed to preflight element energies for {env_name} ({model_name}).")
-                    if pre.stdout:
-                        console.print(pre.stdout)
-                    if pre.stderr:
-                        console.print(pre.stderr)
-                    return 2
-                for line in (pre.stdout or "").splitlines():
-                    if line.startswith("IPORCH_ELEMENT_ENERGIES="):
-                        try:
-                            element_energies = json.loads(line.split("=", 1)[1])
-                        except Exception:
-                            element_energies = None
-                        break
-
-            if linear_enabled or elements_enabled:
-                cmd.extend(
-                    [
-                        "" if linear_a is None else str(linear_a),
-                        "" if linear_b is None else str(linear_b),
-                        str(linear_mode),
-                        "" if not elements else str(elements),
-                        "" if not element_energies else json.dumps(element_energies),
-                        "",  # preflight flag (empty = normal run)
-                    ]
-                )
-            header = f"{_clean_env(env_name).upper()} → {model_name}"
-            # Display command with an explicit break after the worker path.
-            cmd_display = " ".join(cmd)
-            try:
-                worker_idx = cmd.index(worker_path)
-                if worker_idx + 1 < len(cmd):
-                    cmd_display = " ".join(cmd[: worker_idx + 1]) + "\n" + " ".join(cmd[worker_idx + 1 :])
-            except ValueError:
-                pass
-
-            extra = ""
-            if element_energies:
-                parts = []
-                for k, v in sorted(element_energies.items()):
+            )
+            pre = subprocess.run(preflight_cmd, text=True, capture_output=True)
+            if pre.returncode != 0:
+                console.print(f"[red]Failed to preflight element energies for {env_name} ({model_name}).")
+                if pre.stdout:
+                    console.print(pre.stdout)
+                if pre.stderr:
+                    console.print(pre.stderr)
+                return 2
+            for line in (pre.stdout or "").splitlines():
+                if line.startswith("IPORCH_ELEMENT_ENERGIES="):
                     try:
-                        parts.append(f"{k}={float(v):.2f} eV")
+                        element_energies = json.loads(line.split("=", 1)[1])
                     except Exception:
-                        parts.append(f"{k}={v} eV")
-                # Ensure a clean line break separating from the command.
-                extra = "\nreference energy correction: " + " | ".join(parts)
+                        element_energies = None
+                    break
 
-            console.print(Panel(f"{header}\n{cmd_display}{extra}", border_style="blue"))
-            res = subprocess.run(cmd, text=True)
-            alias_key = _canonical_alias(model_name)
-            if res.returncode != 0:
-                console.print(f"[red]Failed for {env_name} ({model_name})")
+        if linear_enabled or elements_enabled:
+            cmd.extend(
+                [
+                    "" if linear_a is None else str(linear_a),
+                    "" if linear_b is None else str(linear_b),
+                    str(linear_mode),
+                    "" if not elements else str(elements),
+                    "" if not element_energies else json.dumps(element_energies),
+                    "",  # preflight flag (empty = normal run)
+                ]
+            )
+        header = f"{_clean_env(env_name).upper()} → {model_name}"
+        # Display command with an explicit break after the worker path.
+        cmd_display = " ".join(cmd)
+        try:
+            worker_idx = cmd.index(worker_path)
+            if worker_idx + 1 < len(cmd):
+                cmd_display = " ".join(cmd[: worker_idx + 1]) + "\n" + " ".join(cmd[worker_idx + 1 :])
+        except ValueError:
+            pass
+
+        extra = ""
+        if element_energies:
+            parts = []
+            for k, v in sorted(element_energies.items()):
                 try:
-                    set_model_status(alias_key, "broken")
+                    parts.append(f"{k}={float(v):.2f} eV")
                 except Exception:
-                    pass
-            else:
-                console.print(f"[green]Success: {model_name}")
-                try:
-                    set_model_status(alias_key, "ok")
-                except Exception:
-                    pass
-        finally:
+                    parts.append(f"{k}={v} eV")
+            # Ensure a clean line break separating from the command.
+            extra = "\nreference energy correction: " + " | ".join(parts)
+
+        console.print(Panel(f"{header}\n{cmd_display}{extra}", border_style="blue"))
+        res = subprocess.run(cmd, text=True)
+        alias_key = _canonical_alias(model_name)
+        if res.returncode != 0:
+            console.print(f"[red]Failed for {env_name} ({model_name})")
             try:
-                os.remove(worker_path)
+                set_model_status(alias_key, "broken")
+            except Exception:
+                pass
+        else:
+            console.print(f"[green]Success: {model_name}")
+            try:
+                set_model_status(alias_key, "ok")
             except Exception:
                 pass
     return 0
@@ -445,13 +315,22 @@ def _interactive_edit_pairs(pairs: List[List[str]]):
 
 
 def cmd_configure(args: argparse.Namespace) -> int:
-    console.print(Panel("[bold]Interactive configuration[/bold]\nConfigure base env, scan directories and select models.", border_style="blue"))
+    console.print(
+        Panel(
+            "[bold]Interactive configuration[/bold]\nConfigure base env, scan directories and select models.",
+            border_style="blue",
+        )
+    )
     cfg = load_config()
 
-    base_env = Prompt.ask("Base IP-Orch environment (e.g. mlip):", default=cfg.get("base_env", os.environ.get("CONDA_DEFAULT_ENV", "")))
+    base_env = Prompt.ask(
+        "Base IP-Orch environment (e.g. mlip):", default=cfg.get("base_env", os.environ.get("CONDA_DEFAULT_ENV", ""))
+    )
 
     default_envs_dir = _guess_envs_dir()
-    envs_base_dir = Prompt.ask("Base MLIPs environments directory (e.g. ~/miniconda3/envs)", default=cfg.get("envs_base_dir", default_envs_dir))
+    envs_base_dir = Prompt.ask(
+        "Base MLIPs environments directory (e.g. ~/miniconda3/envs)", default=cfg.get("envs_base_dir", default_envs_dir)
+    )
 
     discovered = _discover_envs_from_dir(envs_base_dir)
     current_env = _current_conda_env()
