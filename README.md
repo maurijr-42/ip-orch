@@ -30,6 +30,7 @@
 - [Usage](#usage)
     - [Configure and register models](#configure-and-register-models)
     - [Run a script across models](#run-a-script-across-models)
+    - [Saving model results](#saving-model-results)
     - [Reference energy correction](#reference-energy-correction)
 - [Contributions and suggestions](#contributions-and-suggestions)
 - [License](#license)
@@ -141,6 +142,33 @@ ip-orch --run examples/calculators_test.py \
 ip-orch --run examples/calculators_test.py \
         --envs mace \
         --no-energy-correction
+```
+
+### Saving model results
+
+IP-Orch runs the user script once per selected model, so scripts should save their own outputs when results need to be compared later. A simple pattern is to append one row per model to a CSV file:
+
+```python
+import csv
+from pathlib import Path
+
+def main(calculator_name, ase_calculator):
+    energy = ...
+    row = {"model": calculator_name, "energy_ev": energy}
+    csv_path = Path("results.csv")
+
+    write_header = not csv_path.exists()
+    with csv_path.open("a", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=row.keys())
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+```
+
+The graphene bilayer example follows this approach and writes to `graphene_bilayer_results.csv` by default. The output path can be changed with:
+
+```bash
+IPORCH_RESULTS_CSV=results/bilayer.csv ip-orch --run examples/bilayer.py --models mace-mp,orb-v3
 ```
 
 ## Reference
