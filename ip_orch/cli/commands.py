@@ -1,9 +1,13 @@
 import argparse
+import importlib.util
 import json
 import os
 import re
 import subprocess
-from typing import List
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from importlib import resources
+from typing import List, Optional, Tuple
 
 from rich import box
 from rich.console import Console
@@ -39,6 +43,67 @@ from .helpers import (
 from .repo_map import repo_url_for_alias
 
 console = Console()
+
+
+@dataclass
+class _RunJob:
+    env_name: str
+    model_name: str
+    cmd: List[str]
+    cmd_display: str
+    extra: str = ""
+
+
+@dataclass
+class _RunResult:
+    env_name: str
+    model_name: str
+    returncode: int
+    stdout: str = ""
+    stderr: str = ""
+    preflight_failed: bool = False
+
+
+def _package_parent_path() -> str:
+    try:
+        spec = importlib.util.find_spec("ip_orch")
+        if spec and spec.submodule_search_locations:
+            package_path = os.path.abspath(next(iter(spec.submodule_search_locations)))
+            return os.path.dirname(package_path)
+    except Exception:
+        pass
+    return ""
+
+
+def _worker_resource_path() -> str:
+    return str(resources.files("ip_orch.core").joinpath("worker.py"))
+
+
+def _format_worker_command(cmd: List[str], worker_path: str) -> str:
+    cmd_display = " ".join(cmd)
+    try:
+        worker_idx = cmd.index(worker_path)
+        if worker_idx + 1 < len(cmd):
+            cmd_display = " ".join(cmd[: worker_idx + 1]) + "\n" + " ".join(cmd[worker_idx + 1 :])
+    except ValueError:
+        pass
+    return cmd_display
+
+
+def _reference_energy_summary(element_energies) -> str:
+    if not element_energies:
+        return ""
+    parts = []
+    for k, v in sorted(element_energies.items()):
+        try:
+            parts.append(f"{k}={float(v):.2f} eV")
+        except Exception:
+            parts.append(f"{k}={v} eV")
+    return "\nreference energy correction: " + " | ".join(parts)
+
+
+def _run_subprocess(cmd: List[str], *, capture_output: bool = False) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, text=True, capture_output=capture_output)
 
 
 def cmd_add(args: argparse.Namespace) -> int:
@@ -110,9 +175,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         console.print("Use 'ip-orch --configure' or 'ip-orch --add ENV MODEL' to set them.")
         return 1
 
+    parallel = max(1, int(getattr(args, "parallel", 1) or 1))
     summary_lines = [f"{_clean_env(e)} → {m}" for e, m in selected_pairs]
+    title = "IP-Orch: starting execution"
+    if parallel > 1:
+        title = f"{title} | running up to {parallel} models in parallel"
+    panel_lines = [title]
     summary = "\n".join(summary_lines) if summary_lines else "(no models)"
-    console.print(Panel(f"IP-Orch: starting execution\n{summary}", border_style="blue"))
+    panel_lines.append(summary)
+    console.print(Panel("\n".join(panel_lines), border_style="blue"))
 
     # Optional linear correction parameters (can come from JSON config and/or args)
     linear_a = getattr(args, "energy_linear_a", None)
@@ -154,13 +225,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         console.print("[red]--energy-linear-mode must be 'total_energy' or 'per_atom'.")
         return 2
 
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
-    worker_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "core", "worker.py"))
+    repo_root = _package_parent_path()
+    worker_path = _worker_resource_path()
 
-    for env_name, model_name in selected_pairs:
+    def build_base_command(env_name: str, model_name: str) -> List[str]:
         python_bin = _python_for_env(env_name, envs_base_dir)
         if python_bin:
-            cmd = [
+            return [
                 python_bin,
                 worker_path,
                 args.script,
@@ -169,21 +240,22 @@ def cmd_run(args: argparse.Namespace) -> int:
                 models_path,
                 repo_root,
             ]
-        else:
-            cmd = [
-                "conda",
-                "run",
-                "-n",
-                env_name,
-                "python",
-                worker_path,
-                args.script,
-                env_name,
-                model_name,
-                models_path,
-                repo_root,
-            ]
+        return [
+            "conda",
+            "run",
+            "-n",
+            env_name,
+            "python",
+            worker_path,
+            args.script,
+            env_name,
+            model_name,
+            models_path,
+            repo_root,
+        ]
 
+    def prepare_job(env_name: str, model_name: str) -> Tuple[Optional[_RunJob], Optional[_RunResult]]:
+        cmd = build_base_command(env_name, model_name)
         element_energies = None
         if elements_enabled:
             # Preflight to compute per-element reference energies inside the MLIP env,
@@ -199,14 +271,25 @@ def cmd_run(args: argparse.Namespace) -> int:
                     "preflight",
                 ]
             )
-            pre = subprocess.run(preflight_cmd, text=True, capture_output=True)
+            try:
+                pre = _run_subprocess(preflight_cmd, capture_output=True)
+            except Exception as exc:
+                return None, _RunResult(
+                    env_name=env_name,
+                    model_name=model_name,
+                    returncode=1,
+                    stderr=str(exc),
+                    preflight_failed=True,
+                )
             if pre.returncode != 0:
-                console.print(f"[red]Failed to preflight element energies for {env_name} ({model_name}).")
-                if pre.stdout:
-                    console.print(pre.stdout)
-                if pre.stderr:
-                    console.print(pre.stderr)
-                return 2
+                return None, _RunResult(
+                    env_name=env_name,
+                    model_name=model_name,
+                    returncode=pre.returncode,
+                    stdout=pre.stdout or "",
+                    stderr=pre.stderr or "",
+                    preflight_failed=True,
+                )
             for line in (pre.stdout or "").splitlines():
                 if line.startswith("IPORCH_ELEMENT_ENERGIES="):
                     try:
@@ -227,41 +310,92 @@ def cmd_run(args: argparse.Namespace) -> int:
                 ]
             )
         header = f"{_clean_env(env_name).upper()} → {model_name}"
-        # Display command with an explicit break after the worker path.
-        cmd_display = " ".join(cmd)
+        cmd_display = _format_worker_command(cmd, worker_path)
+        extra = _reference_energy_summary(element_energies)
+        return _RunJob(env_name=env_name, model_name=model_name, cmd=cmd, cmd_display=f"{header}\n{cmd_display}", extra=extra), None
+
+    def persist_status(model_name: str, returncode: int) -> None:
+        alias_key = _canonical_alias(model_name)
         try:
-            worker_idx = cmd.index(worker_path)
-            if worker_idx + 1 < len(cmd):
-                cmd_display = " ".join(cmd[: worker_idx + 1]) + "\n" + " ".join(cmd[worker_idx + 1 :])
-        except ValueError:
+            set_model_status(alias_key, "ok" if returncode == 0 else "broken")
+        except Exception:
             pass
 
-        extra = ""
-        if element_energies:
-            parts = []
-            for k, v in sorted(element_energies.items()):
-                try:
-                    parts.append(f"{k}={float(v):.2f} eV")
-                except Exception:
-                    parts.append(f"{k}={v} eV")
-            # Ensure a clean line break separating from the command.
-            extra = "\nreference energy correction: " + " | ".join(parts)
+    def run_job(job: _RunJob, *, capture_output: bool) -> _RunResult:
+        try:
+            res = _run_subprocess(job.cmd, capture_output=capture_output)
+        except Exception as exc:
+            return _RunResult(
+                env_name=job.env_name,
+                model_name=job.model_name,
+                returncode=1,
+                stderr=str(exc),
+            )
+        return _RunResult(
+            env_name=job.env_name,
+            model_name=job.model_name,
+            returncode=res.returncode,
+            stdout=getattr(res, "stdout", "") or "",
+            stderr=getattr(res, "stderr", "") or "",
+        )
 
-        console.print(Panel(f"{header}\n{cmd_display}{extra}", border_style="blue"))
-        res = subprocess.run(cmd, text=True)
-        alias_key = _canonical_alias(model_name)
-        if res.returncode != 0:
-            console.print(f"[red]Failed for {env_name} ({model_name})")
-            try:
-                set_model_status(alias_key, "broken")
-            except Exception:
-                pass
-        else:
-            console.print(f"[green]Success: {model_name}")
-            try:
-                set_model_status(alias_key, "ok")
-            except Exception:
-                pass
+    if parallel == 1:
+        for env_name, model_name in selected_pairs:
+            job, preflight_error = prepare_job(env_name, model_name)
+            if preflight_error:
+                console.print(f"[red]Failed to preflight element energies for {env_name} ({model_name}).")
+                if preflight_error.stdout:
+                    console.print(preflight_error.stdout)
+                if preflight_error.stderr:
+                    console.print(preflight_error.stderr)
+                persist_status(model_name, 1)
+                return 2
+            if job is None:
+                return 2
+
+            console.print(Panel(f"{job.cmd_display}{job.extra}", border_style="blue"))
+            result = run_job(job, capture_output=False)
+            persist_status(model_name, result.returncode)
+            if result.returncode != 0:
+                console.print(f"[red]Failed for {env_name} ({model_name})")
+            else:
+                console.print(f"[green]Success: {model_name}")
+        return 0
+
+    jobs = []
+    had_preflight_error = False
+    for env_name, model_name in selected_pairs:
+        job, preflight_error = prepare_job(env_name, model_name)
+        if preflight_error:
+            console.print(f"[red]Failed to preflight element energies for {env_name} ({model_name}).")
+            if preflight_error.stdout:
+                console.print(preflight_error.stdout)
+            if preflight_error.stderr:
+                console.print(preflight_error.stderr)
+            persist_status(model_name, 1)
+            had_preflight_error = True
+        elif job is not None:
+            jobs.append(job)
+
+    failed = had_preflight_error
+    with ThreadPoolExecutor(max_workers=parallel) as executor:
+        futures = {executor.submit(run_job, job, capture_output=True): job for job in jobs}
+        for future in as_completed(futures):
+            job = futures[future]
+            result = future.result()
+            console.print(Panel(f"{job.cmd_display}{job.extra}", border_style="blue"))
+            if result.stdout:
+                console.print(result.stdout.rstrip())
+            if result.stderr:
+                console.print(result.stderr.rstrip())
+            persist_status(job.model_name, result.returncode)
+            if result.returncode != 0:
+                failed = True
+                console.print(f"[red]Failed for {job.env_name} ({job.model_name})")
+            else:
+                console.print(f"[green]Success: {job.model_name}")
+    if failed:
+        return 2
     return 0
 
 

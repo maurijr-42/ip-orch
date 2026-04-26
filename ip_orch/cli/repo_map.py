@@ -17,36 +17,40 @@ MODEL_FAMILY_REPOS = {
 }
 
 
+def _matches_family(alias: str, family: str) -> bool:
+    return alias == family or alias.startswith(f"{family}-") or alias.startswith(f"{family}_")
+
+
 def repo_url_for_alias(alias: str) -> str:
-    a = (alias or "").lower()
-    if "chgnet" in a:
+    a = (alias or "").strip().lower()
+    if _matches_family(a, "chgnet"):
         return MODEL_FAMILY_REPOS["chgnet"]
-    if a.startswith("dpa") or "deepmd" in a:
+    if _matches_family(a, "dpa") or _matches_family(a, "deepmd"):
         return MODEL_FAMILY_REPOS["deepmd"]
-    if "eqnorm" in a:
+    if _matches_family(a, "eqnorm"):
         return MODEL_FAMILY_REPOS["eqnorm"]
-    if "grace" in a:
+    if _matches_family(a, "grace"):
         return MODEL_FAMILY_REPOS["grace"]
-    if "hienet" in a:
+    if _matches_family(a, "hienet"):
         return MODEL_FAMILY_REPOS["hienet"]
-    if "m3gnet" in a:
+    if _matches_family(a, "m3gnet"):
         return MODEL_FAMILY_REPOS["m3gnet"]
-    if a.startswith("mace"):
+    if _matches_family(a, "mace"):
         return MODEL_FAMILY_REPOS["mace"]
-    if "matris" in a:
+    if _matches_family(a, "matris"):
         return MODEL_FAMILY_REPOS["matris"]
-    if "mattersim" in a:
+    if _matches_family(a, "mattersim"):
         return MODEL_FAMILY_REPOS["mattersim"]
-    if "nequip" in a or "allegro" in a:
+    if _matches_family(a, "nequip") or _matches_family(a, "allegro"):
         return MODEL_FAMILY_REPOS["nequip"]
-    if "nequix" in a:
+    if _matches_family(a, "nequix"):
         return MODEL_FAMILY_REPOS["nequix"]
-    if a.startswith("orb"):
+    if _matches_family(a, "orb"):
         return MODEL_FAMILY_REPOS["orb"]
-    if "sevennet" in a or "sevenn" in a:
+    if _matches_family(a, "sevennet") or _matches_family(a, "sevenn"):
         return MODEL_FAMILY_REPOS["sevenn"]
-    if "tace" in a:
+    if _matches_family(a, "tace"):
         return MODEL_FAMILY_REPOS["tace"]
-    if "upet" in a or a.startswith("pet"):
+    if _matches_family(a, "upet") or _matches_family(a, "pet"):
         return MODEL_FAMILY_REPOS["upet"]
     return "-"

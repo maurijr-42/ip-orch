@@ -80,6 +80,14 @@ def main(argv: List[str] = None) -> int:
         metavar="ALIAS1,ALIAS2",
         help="Select specific model aliases to run (across configured environments)",
     )
+    parser.add_argument(
+        "--parallel",
+        dest="parallel",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Run up to N selected models concurrently when used with --run",
+    )
 
     # Optional post-processing: linear energy correction
     parser.add_argument(
@@ -173,6 +181,7 @@ def main(argv: List[str] = None) -> int:
                 energy_linear_mode=args.energy_linear_mode,
                 correction_elements=args.correction_elements,
                 no_energy_correction=args.no_energy_correction,
+                parallel=args.parallel,
             )
             return cmd_run(a)
         if getattr(args, "supported_models", None) is not None:

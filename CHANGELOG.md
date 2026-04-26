@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] - 2026-04-26
+
+### Added
+- Added `ase` to package dependencies.
+- Added a registry-based `ModelFactory.register(...)` API and `ip_orch.model_builders` entry point support.
+- Added `--parallel N` for running selected model benchmarks concurrently.
+- Added CSV append output to the graphene bilayer example, configurable with `IPORCH_RESULTS_CSV`.
+- Added documented pytest coverage for CLI orchestration, config recovery, helper normalization, environment discovery, plugin registration, repository mapping, examples, and energy correction wrappers.
+
+### Changed
+- Refactored built-in model creation logic into `ip_orch/core/model_builders.py`, replacing the monolithic `ModelFactory` if-chain with a registry.
+- Resolved the worker script path via package resources so installed packages no longer depend on a source checkout layout.
+- Updated `requires-python` and Ruff target from Python 3.8 to Python 3.9 to match the package's type syntax.
+- Replaced worker/example `print()` calls with structured `logging`.
+- Tightened repository URL alias matching to exact/prefix checks to avoid accidental cross-family matches.
+- Moved the parallel execution notice into the initial run summary panel.
+- Updated the graphene bilayer example to use all-axis periodic boundary conditions for ORB compatibility.
+- Added pytest collection metadata so `pytest -vv` displays each test's docstring summary alongside the test id.
+- Ignored the default graphene bilayer CSV output in `.gitignore`.
+- Fixed CLI alias canonicalization so underscore and dash variants map to the same supported model alias.
+
 ## [Unreleased] - 2026-04-21
 
 ### Added

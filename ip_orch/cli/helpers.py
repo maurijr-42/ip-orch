@@ -14,13 +14,17 @@ def _norm_token(s: str) -> str:
     return "".join(ch for ch in (s or "").lower() if ch.isalnum() or ch in "-_")
 
 
+def _alias_match_token(s: str) -> str:
+    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+
+
 def _canonical_alias(name: str) -> str:
     aliases = _get_aliases()
-    norm = _norm_token(name)
+    norm = _alias_match_token(name)
     for key in aliases.keys():
-        if _norm_token(key) == norm:
+        if _alias_match_token(key) == norm:
             return key
-    return norm
+    return _norm_token(name)
 
 
 def _group_pairs(pairs: List[List[str]]):

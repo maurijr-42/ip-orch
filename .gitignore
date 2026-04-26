@@ -49,6 +49,10 @@ coverage.xml
 *.cover
 *.py,cover
 
+# Example outputs
+graphene_bilayer_results.csv
+examples/graphene_bilayer_results.csv
+
 # Type checking
 .mypy_cache/
 .pyre/

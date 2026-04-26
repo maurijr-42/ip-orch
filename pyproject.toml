@@ -12,7 +12,7 @@ authors = [
 ]
 description = "Uma biblioteca para MLIPs e benchmarks."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { text="MIT" }
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -21,6 +21,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "ase",
     "rich",  
     "numpy",  
     "pandas",
@@ -45,7 +46,7 @@ python_files = ["test_*.py"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py38"
+target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]

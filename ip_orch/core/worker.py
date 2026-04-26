@@ -6,12 +6,16 @@ to load a user script and provide it with an instantiated ASE calculator.
 import importlib.util
 import inspect
 import json
+import logging
 import os
 import sys
 import warnings
 from typing import Dict, Optional
 
 warnings.filterwarnings("ignore")
+
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
@@ -74,19 +78,19 @@ def main() -> None:
                 element_energies[sym] = float(atom.get_potential_energy())
 
         if preflight:
-            print("IPORCH_ELEMENT_ENERGIES=" + json.dumps(element_energies or {}))
+            logger.info("IPORCH_ELEMENT_ENERGIES=%s", json.dumps(element_energies or {}))
             return
 
         calc = wrap_linear_energy_correction(calc, a=linear_a, b=linear_b, mode=linear_mode)
         calc = wrap_reference_energy_correction(calc, element_energies=element_energies)
 
         if not os.path.exists(user_script_path):
-            print(f"[Worker ERROR] User script not found: {user_script_path}")
+            logger.error("[Worker ERROR] User script not found: %s", user_script_path)
             sys.exit(1)
 
         spec = importlib.util.spec_from_file_location("user_logic", user_script_path)
         if spec is None or spec.loader is None:
-            print(f"[Worker ERROR] Could not load user script: {user_script_path}")
+            logger.error("[Worker ERROR] Could not load user script: %s", user_script_path)
             sys.exit(1)
 
         user_module = importlib.util.module_from_spec(spec)
@@ -122,8 +126,9 @@ def main() -> None:
 
         if logic_function is None:
             names = ", ".join(n for n, _ in candidates) if "candidates" in locals() else "(none)"
-            print(
-                "[Worker ERROR] Could not find a function to run. Define 'mlip_entry(calculator_name, calc)'. Found:",
+            logger.error(
+                "[Worker ERROR] Could not find a function to run. Define 'mlip_entry(calculator_name, calc)'. "
+                "Found: %s",
                 names,
             )
             sys.exit(1)
@@ -131,7 +136,7 @@ def main() -> None:
         logic_function(calculator_name_arg, calc)
     except Exception as e:
         calculator_name_arg = sys.argv[2] if len(sys.argv) > 2 else "unknown"
-        print(f"[Worker ERROR] Failure running {calculator_name_arg}: {e}")
+        logger.error("[Worker ERROR] Failure running %s: %s", calculator_name_arg, e)
         sys.exit(1)
 
 
