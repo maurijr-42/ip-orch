@@ -4,8 +4,7 @@ from typing import List
 
 from rich.console import Console
 
-from .commands import cmd_add, cmd_remove, cmd_models, cmd_run, cmd_configure
-
+from .commands import cmd_add, cmd_configure, cmd_models, cmd_remove, cmd_run
 
 console = Console()
 
@@ -25,9 +24,7 @@ def main(argv: List[str] = None) -> int:
     )
     parser = argparse.ArgumentParser(
         prog="ip-orch",
-        description=(
-            "IP-ORCH: orchestrate ASE runs across multiple MLIP environments"
-        ),
+        description=("IP-ORCH: orchestrate ASE runs across multiple MLIP environments"),
         usage=(
             "ip-orch [-h]\n"
             "               (--add ENV MODEL | --remove ENV [MODEL ...] | --run SCRIPT |\n"
@@ -82,6 +79,14 @@ def main(argv: List[str] = None) -> int:
         default=None,
         metavar="ALIAS1,ALIAS2",
         help="Select specific model aliases to run (across configured environments)",
+    )
+    parser.add_argument(
+        "--parallel",
+        dest="parallel",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Run up to N selected models concurrently when used with --run",
     )
 
     # Optional post-processing: linear energy correction
@@ -176,6 +181,7 @@ def main(argv: List[str] = None) -> int:
                 energy_linear_mode=args.energy_linear_mode,
                 correction_elements=args.correction_elements,
                 no_energy_correction=args.no_energy_correction,
+                parallel=args.parallel,
             )
             return cmd_run(a)
         if getattr(args, "supported_models", None) is not None:

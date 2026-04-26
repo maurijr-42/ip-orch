@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import Counter
 from typing import Iterable, Literal, Optional, TypeVar
 
-
 LinearCorrectionMode = Literal["total_energy", "per_atom"]
 
 TCalc = TypeVar("TCalc")
@@ -85,9 +84,7 @@ def wrap_reference_energy_correction(
     try:
         from ase.calculators.calculator import Calculator, all_changes
     except Exception as exc:  # pragma: no cover
-        raise ImportError(
-            "ASE is required to wrap calculators for energy correction"
-        ) from exc
+        raise ImportError("ASE is required to wrap calculators for energy correction") from exc
 
     base_calc = calc
     element_energies_local = dict(element_energies)
@@ -143,9 +140,7 @@ def wrap_linear_energy_correction(
     try:
         from ase.calculators.calculator import Calculator, all_changes
     except Exception as exc:  # pragma: no cover
-        raise ImportError(
-            "ASE is required to wrap calculators for energy correction"
-        ) from exc
+        raise ImportError("ASE is required to wrap calculators for energy correction") from exc
 
     base_calc = calc
 

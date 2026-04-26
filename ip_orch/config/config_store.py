@@ -1,7 +1,6 @@
 import json
 import os
-from typing import Dict, List, Tuple, Optional
-
+from typing import Dict, Optional
 
 CONFIG_DIR = os.path.expanduser("~/.ip-orch")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
@@ -31,7 +30,7 @@ def load_config() -> Dict:
     if not os.path.exists(CONFIG_PATH):
         return DEFAULT_CONFIG.copy()
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
             data = json.load(f)
     except Exception:
         # Fallback to defaults if file is corrupted

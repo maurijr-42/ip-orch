@@ -39,11 +39,12 @@ def _discover_envs_from_dir(base_dir: str) -> set:
     path = os.path.expanduser(base_dir)
     if not os.path.isdir(path):
         return envs
+
     def has_python(d: str) -> bool:
-        return (
-            os.path.isfile(os.path.join(d, "bin", "python")) or
-            os.path.isfile(os.path.join(d, "Scripts", "python.exe"))
+        return os.path.isfile(os.path.join(d, "bin", "python")) or os.path.isfile(
+            os.path.join(d, "Scripts", "python.exe")
         )
+
     try:
         for name in os.listdir(path):
             full = os.path.join(path, name)
@@ -77,12 +78,13 @@ def _python_for_env(env_name: str, base_dir: str) -> str:
     roots = [os.path.join(base, env_name), os.path.join(base, f".{env_name}")]
     candidates = []
     for root in roots:
-        candidates.extend([
-            os.path.join(root, "bin", "python"),
-            os.path.join(root, "Scripts", "python.exe"),
-        ])
+        candidates.extend(
+            [
+                os.path.join(root, "bin", "python"),
+                os.path.join(root, "Scripts", "python.exe"),
+            ]
+        )
     for p in candidates:
         if os.path.isfile(p) and os.access(p, os.X_OK):
             return p
     return ""
-
