@@ -18,7 +18,7 @@
   <!-- <a href="https://github.com/yourusername/yourproject/releases">
     <img src="https://img.shields.io/badge/version-1.0.0-green.svg" alt="Version">
   </a> -->
-  <a href="https://github.com/yourusername/yourproject/actions">
+  <a href="https://github.com/pedrozanineli/ip-orch/actions">
     <img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build Status">
   </a>
 </p>
