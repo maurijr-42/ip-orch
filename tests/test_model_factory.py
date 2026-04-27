@@ -59,28 +59,28 @@ def test_model_factory_loads_entry_point_builders_once():
 @patch("ip_orch.core.model_factory.os.path.expanduser")
 @patch.dict("sys.modules", {"deepmd.calculator": __import__("unittest.mock").mock.MagicMock()})
 def test_create_dpa_models(mock_expanduser):
-    """Build DeepMD calculators with model files below the configured models path."""
+    """Build DeepMD calculators from files at the configured models path root."""
 
     mock_expanduser.side_effect = lambda x: x  # identity
     from deepmd.calculator import DP
 
     ModelFactory.create("dpa-3.1-3m-ft", models_path="/my/models/path")
-    DP.assert_called_with(model=os.path.join("/my/models/path", "deepmd", "dpa3-openlam.pth"))
+    DP.assert_called_with(model=os.path.join("/my/models/path", "dpa3-openlam.pth"))
 
     ModelFactory.create("dpa-3.1-mptrj", models_path="/my/models/path")
-    DP.assert_called_with(model=os.path.join("/my/models/path", "deepmd", "dpa3-mptrj.pth"))
+    DP.assert_called_with(model=os.path.join("/my/models/path", "dpa3-mptrj.pth"))
 
 
 @patch("ip_orch.core.model_factory.os.path.expanduser")
 @patch.dict("sys.modules", {"nequip.ase": __import__("unittest.mock").mock.MagicMock()})
 def test_create_nequip_models(mock_expanduser):
-    """Build NequIP calculators from compiled model files below the models path."""
+    """Build NequIP calculators from compiled files at the models path root."""
 
     mock_expanduser.side_effect = lambda x: x
     from nequip.ase import NequIPCalculator
 
     ModelFactory.create("nequip-oam-xl", models_path="/temp")
     NequIPCalculator.from_compiled_model.assert_called_with(
-        compile_path=os.path.join("/temp", "nequip", "nequip-OAM-XL.nequip.pt2"),
+        compile_path=os.path.join("/temp", "nequip-OAM-XL.nequip.pt2"),
         device="cpu",
     )

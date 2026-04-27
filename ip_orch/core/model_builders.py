@@ -1,5 +1,6 @@
 """Built-in calculator builders for :mod:`ip_orch.core.model_factory`."""
 
+import inspect
 import os
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
@@ -57,6 +58,10 @@ def model_builder(key: str) -> Callable[[ModelBuilder], ModelBuilder]:
     return decorator
 
 
+def _model_file(ctx: ModelBuildContext, filename: str) -> str:
+    return os.path.join(ctx.base_path, filename)
+
+
 @model_builder("pet_oam_xl")
 def build_pet_oam_xl(ctx: ModelBuildContext) -> Any:
     from upet.calculator import UPETCalculator
@@ -68,7 +73,7 @@ def build_pet_oam_xl(ctx: ModelBuildContext) -> Any:
 def build_nequip_oam_xl(ctx: ModelBuildContext) -> Any:
     from nequip.ase import NequIPCalculator
 
-    path = os.path.join(ctx.base_path, "nequip", "nequip-OAM-XL.nequip.pt2")
+    path = _model_file(ctx, "nequip-OAM-XL.nequip.pt2")
     return NequIPCalculator.from_compiled_model(compile_path=path, device=ctx.device)
 
 
@@ -90,7 +95,7 @@ def build_sevennet_omni(ctx: ModelBuildContext) -> Any:
 def build_nequip_oam_l(ctx: ModelBuildContext) -> Any:
     from nequip.ase import NequIPCalculator
 
-    path = os.path.join(ctx.base_path, "nequip", "nequip-OAM-L.nequip.pt2")
+    path = _model_file(ctx, "nequip-OAM-L.nequip.pt2")
     return NequIPCalculator.from_compiled_model(compile_path=path, device=ctx.device)
 
 
@@ -126,7 +131,7 @@ def build_orb_v3(ctx: ModelBuildContext) -> Any:
 def build_dpa_3_1_3m_ft(ctx: ModelBuildContext) -> Any:
     from deepmd.calculator import DP
 
-    path = os.path.join(ctx.base_path, "deepmd", "dpa3-openlam.pth")
+    path = _model_file(ctx, "dpa3-openlam.pth")
     return DP(model=path)
 
 
@@ -176,7 +181,7 @@ def build_nequix_mp_pft(ctx: ModelBuildContext) -> Any:
 def build_nequip_mp_l(ctx: ModelBuildContext) -> Any:
     from nequip.ase import NequIPCalculator
 
-    path = os.path.join(ctx.base_path, "nequip", "nequip-MP-L.nequip.pt2")
+    path = _model_file(ctx, "nequip-MP-L.nequip.pt2")
     return NequIPCalculator.from_compiled_model(compile_path=path, device=ctx.device)
 
 
@@ -191,7 +196,7 @@ def build_nequix_mp(ctx: ModelBuildContext) -> Any:
 def build_allegro_mp_l(ctx: ModelBuildContext) -> Any:
     from nequip.ase import NequIPCalculator
 
-    path = os.path.join(ctx.base_path, "nequip", "allegro-MP-L.nequip.pt2")
+    path = _model_file(ctx, "allegro-MP-L.nequip.pt2")
     return NequIPCalculator.from_compiled_model(compile_path=path, device=ctx.device)
 
 
@@ -199,7 +204,7 @@ def build_allegro_mp_l(ctx: ModelBuildContext) -> Any:
 def build_dpa_3_1_mptrj(ctx: ModelBuildContext) -> Any:
     from deepmd.calculator import DP
 
-    path = os.path.join(ctx.base_path, "deepmd", "dpa3-mptrj.pth")
+    path = _model_file(ctx, "dpa3-mptrj.pth")
     return DP(model=path)
 
 
@@ -214,7 +219,23 @@ def build_sevennet_l3i5(ctx: ModelBuildContext) -> Any:
 def build_hienet(ctx: ModelBuildContext) -> Any:
     from hienet.hienet_calculator import HIENetCalculator
 
-    return HIENetCalculator()
+    candidates = [
+        _model_file(ctx, "HIENet-V3.pth"),
+    ]
+    checkpoint = next((path for path in candidates if os.path.exists(path)), None)
+
+    if checkpoint is None:
+        if ctx.models_path:
+            checked = "\n".join(f"  - {path}" for path in candidates)
+            raise FileNotFoundError(f"HIENet checkpoint not found. Checked:\n{checked}")
+        return HIENetCalculator()
+
+    signature = inspect.signature(HIENetCalculator)
+    for parameter in ("checkpoint_path", "ckpt_path", "model_path", "weight_path", "weights_path"):
+        if parameter in signature.parameters:
+            return HIENetCalculator(**{parameter: checkpoint})
+
+    return HIENetCalculator(checkpoint)
 
 
 @model_builder("grace_2l_mp")

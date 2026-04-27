@@ -182,6 +182,7 @@ def main(argv: List[str] = None) -> int:
                 correction_elements=args.correction_elements,
                 no_energy_correction=args.no_energy_correction,
                 parallel=args.parallel,
+                models_path=args.models_path,
             )
             return cmd_run(a)
         if getattr(args, "supported_models", None) is not None:

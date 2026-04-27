@@ -40,10 +40,25 @@ def test_main_routing(mock_cmd_add):
 def test_main_forwards_parallel(mock_cmd_run):
     """Parse --parallel and forward it to cmd_run."""
 
-    assert main(["--run", "script.py", "--models", "orb-v3", "--parallel", "3"]) == 0
+    assert (
+        main(
+            [
+                "--run",
+                "script.py",
+                "--models",
+                "orb-v3",
+                "--parallel",
+                "3",
+                "--models-path",
+                "/home/p.zanineli/pretrained",
+            ]
+        )
+        == 0
+    )
 
     args = mock_cmd_run.call_args.args[0]
     assert args.parallel == 3
+    assert args.models_path == "/home/p.zanineli/pretrained"
 
 
 @patch("ip_orch.cli.commands.console.print")

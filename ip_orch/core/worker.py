@@ -133,10 +133,10 @@ def main() -> None:
             )
             sys.exit(1)
 
-        logic_function(calculator_name_arg, calc)
+        logic_function(model_name_arg, calc)
     except Exception as e:
-        calculator_name_arg = sys.argv[2] if len(sys.argv) > 2 else "unknown"
-        logger.error("[Worker ERROR] Failure running %s: %s", calculator_name_arg, e)
+        model_name_arg = sys.argv[3] if len(sys.argv) > 3 else "unknown"
+        logger.error("[Worker ERROR] Failure running %s: %s", model_name_arg, e)
         sys.exit(1)
 
 

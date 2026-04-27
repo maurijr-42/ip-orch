@@ -156,7 +156,7 @@ def cmd_models(args: argparse.Namespace) -> int:
 def cmd_run(args: argparse.Namespace) -> int:
     cfg = load_config()
     pairs = _dedup_pairs(cfg.get("full_models", []))
-    models_path = cfg.get("models_path", "")
+    models_path = getattr(args, "models_path", None) or cfg.get("models_path", "")
     envs_base_dir = cfg.get("envs_base_dir", "")
     # Selection: either --envs or --models must be provided by caller
     selected_pairs = []
@@ -312,7 +312,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         header = f"{_clean_env(env_name).upper()} → {model_name}"
         cmd_display = _format_worker_command(cmd, worker_path)
         extra = _reference_energy_summary(element_energies)
-        return _RunJob(env_name=env_name, model_name=model_name, cmd=cmd, cmd_display=f"{header}\n{cmd_display}", extra=extra), None
+        return _RunJob(
+            env_name=env_name, model_name=model_name, cmd=cmd, cmd_display=f"{header}\n{cmd_display}", extra=extra
+        ), None
 
     def persist_status(model_name: str, returncode: int) -> None:
         alias_key = _canonical_alias(model_name)

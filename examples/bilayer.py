@@ -8,6 +8,7 @@ from ase.build import graphene
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
+
 def main(calculator_name, ase_calculator):
     layer1 = graphene(formula="C2", a=2.46, size=(2, 2, 1), vacuum=15.0)
     layer2 = layer1.copy()

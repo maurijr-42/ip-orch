@@ -11,8 +11,9 @@ def mock_config_dir(tmp_path):
     """Route config reads/writes to a temporary test directory."""
 
     config_path = tmp_path / "config.json"
-    with patch("ip_orch.config.config_store.CONFIG_DIR", str(tmp_path)), patch(
-        "ip_orch.config.config_store.CONFIG_PATH", str(config_path)
+    with (
+        patch("ip_orch.config.config_store.CONFIG_DIR", str(tmp_path)),
+        patch("ip_orch.config.config_store.CONFIG_PATH", str(config_path)),
     ):
         yield config_path
 
