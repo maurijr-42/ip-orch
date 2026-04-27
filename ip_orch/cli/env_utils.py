@@ -1,11 +1,10 @@
 import os
 import subprocess
-from typing import Set
 
 from .helpers import DEFAULT_MODELS_BY_ENV
 
 
-def _discover_conda_envs() -> Set[str]:
+def _discover_conda_envs() -> set[str]:
     try:
         out = subprocess.check_output(["conda", "env", "list"], text=True)
         envs = []

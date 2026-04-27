@@ -7,7 +7,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from importlib import resources
-from typing import List, Optional, Tuple
+from typing import Optional
 
 from rich import box
 from rich.console import Console
@@ -49,7 +49,7 @@ console = Console()
 class _RunJob:
     env_name: str
     model_name: str
-    cmd: List[str]
+    cmd: list[str]
     cmd_display: str
     extra: str = ""
 
@@ -79,7 +79,7 @@ def _worker_resource_path() -> str:
     return str(resources.files("ip_orch.core").joinpath("worker.py"))
 
 
-def _format_worker_command(cmd: List[str], worker_path: str) -> str:
+def _format_worker_command(cmd: list[str], worker_path: str) -> str:
     cmd_display = " ".join(cmd)
     try:
         worker_idx = cmd.index(worker_path)
@@ -102,7 +102,7 @@ def _reference_energy_summary(element_energies) -> str:
     return "\nreference energy correction: " + " | ".join(parts)
 
 
-def _run_subprocess(cmd: List[str], *, capture_output: bool = False) -> subprocess.CompletedProcess:
+def _run_subprocess(cmd: list[str], *, capture_output: bool = False) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, text=True, capture_output=capture_output)
 
 
@@ -228,7 +228,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     repo_root = _package_parent_path()
     worker_path = _worker_resource_path()
 
-    def build_base_command(env_name: str, model_name: str) -> List[str]:
+    def build_base_command(env_name: str, model_name: str) -> list[str]:
         python_bin = _python_for_env(env_name, envs_base_dir)
         if python_bin:
             return [
@@ -254,7 +254,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             repo_root,
         ]
 
-    def prepare_job(env_name: str, model_name: str) -> Tuple[Optional[_RunJob], Optional[_RunResult]]:
+    def prepare_job(env_name: str, model_name: str) -> tuple[Optional[_RunJob], Optional[_RunResult]]:
         cmd = build_base_command(env_name, model_name)
         element_energies = None
         if elements_enabled:
@@ -401,7 +401,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _interactive_edit_pairs(pairs: List[List[str]]):
+def _interactive_edit_pairs(pairs: list[list[str]]):
     while True:
         table = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan")
         table.add_column("#", style="dim")

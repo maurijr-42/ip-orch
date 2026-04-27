@@ -1,6 +1,5 @@
 import argparse
 import sys
-from typing import List
 
 from rich.console import Console
 
@@ -9,7 +8,7 @@ from .commands import cmd_add, cmd_configure, cmd_models, cmd_remove, cmd_run
 console = Console()
 
 
-def main(argv: List[str] = None) -> int:
+def main(argv: list[str] = None) -> int:
     epilog = (
         "run selection (required with --run):\n"
         "  --envs ENV1,ENV2    Run all configured models for the selected environments.\n"

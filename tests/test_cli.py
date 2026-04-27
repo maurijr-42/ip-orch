@@ -3,8 +3,8 @@ import os
 import subprocess
 from unittest.mock import patch
 
-from ip_orch.cli.main import main
 from ip_orch.cli.commands import _package_parent_path, _worker_resource_path, cmd_add, cmd_models, cmd_run
+from ip_orch.cli.main import main
 
 
 @patch("ip_orch.cli.commands.add_model")

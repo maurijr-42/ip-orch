@@ -1,7 +1,4 @@
-from typing import Dict, List
-
-
-def _get_aliases() -> Dict[str, str]:
+def _get_aliases() -> dict[str, str]:
     try:
         from ..core.model_factory import ModelFactory as _MF
 
@@ -27,7 +24,7 @@ def _canonical_alias(name: str) -> str:
     return _norm_token(name)
 
 
-def _group_pairs(pairs: List[List[str]]):
+def _group_pairs(pairs: list[list[str]]):
     grouped = {}
     for env, model in pairs:
         alias = _canonical_alias(model)
@@ -35,7 +32,7 @@ def _group_pairs(pairs: List[List[str]]):
     return {e: sorted(list(ms)) for e, ms in grouped.items()}
 
 
-def _dedup_pairs(pairs: List[List[str]]):
+def _dedup_pairs(pairs: list[list[str]]):
     seen = set()
     out = []
     for env, model in pairs:

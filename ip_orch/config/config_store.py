@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, Optional
+from typing import Optional
 
 CONFIG_DIR = os.path.expanduser("~/.ip-orch")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
@@ -21,7 +21,7 @@ def ensure_dir() -> None:
     os.makedirs(CONFIG_DIR, exist_ok=True)
 
 
-def load_config() -> Dict:
+def load_config() -> dict:
     """Load user config from CONFIG_PATH; if missing, return defaults.
 
     Ensures required keys exist and have the right types.
@@ -49,7 +49,7 @@ def load_config() -> Dict:
     return cfg
 
 
-def save_config(cfg: Dict) -> None:
+def save_config(cfg: dict) -> None:
     ensure_dir()
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
@@ -96,7 +96,7 @@ def set_models_path(path: str) -> None:
     save_config(cfg)
 
 
-def get_model_status_map() -> Dict[str, str]:
+def get_model_status_map() -> dict[str, str]:
     """Return a copy of the alias->status map.
 
     Status values are strings: "ok" or "broken". Missing means unknown.

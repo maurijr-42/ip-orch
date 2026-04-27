@@ -10,7 +10,7 @@ import logging
 import os
 import sys
 import warnings
-from typing import Dict, Optional
+from typing import Optional
 
 warnings.filterwarnings("ignore")
 
@@ -63,7 +63,7 @@ def main() -> None:
             raise ValueError("Provide both a and b (or neither).")
 
         # Optional: compute element reference energies using the MLIP calculator itself.
-        element_energies: Optional[Dict[str, float]] = None
+        element_energies: Optional[dict[str, float]] = None
         if element_energies_json_arg:
             try:
                 element_energies = json.loads(element_energies_json_arg)

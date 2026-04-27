@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Iterable, Literal, Optional, TypeVar
+from collections.abc import Iterable
+from typing import Literal, TypeVar
 
 LinearCorrectionMode = Literal["total_energy", "per_atom"]
 
@@ -11,8 +12,8 @@ TCalc = TypeVar("TCalc")
 def apply_linear_correction(
     energy: float,
     natoms: int,
-    a: Optional[float],
-    b: Optional[float],
+    a: float | None,
+    b: float | None,
     mode: LinearCorrectionMode = "total_energy",
 ) -> float:
     """Apply a linear correction to an MLIP-predicted energy.
@@ -66,7 +67,7 @@ def compute_element_reference_energy_shift(
 def wrap_reference_energy_correction(
     calc: TCalc,
     *,
-    element_energies: Optional[dict[str, float]],
+    element_energies: dict[str, float] | None,
 ) -> TCalc:
     """Optionally correct energies by subtracting element reference energies.
 
@@ -125,8 +126,8 @@ def wrap_reference_energy_correction(
 def wrap_linear_energy_correction(
     calc: TCalc,
     *,
-    a: Optional[float],
-    b: Optional[float],
+    a: float | None,
+    b: float | None,
     mode: LinearCorrectionMode = "total_energy",
 ) -> TCalc:
     """Optionally wrap an ASE calculator to correct only the energy result.
