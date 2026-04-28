@@ -44,10 +44,18 @@ def main() -> None:
         elements_raw = (elements_arg or "").strip()
         elements = [e.strip() for e in elements_raw.split(",") if e.strip()] if elements_raw else []
         element_energies_json_arg = (element_energies_json_arg or "").strip()
-        preflight = (preflight_arg or "").strip() in ("1", "true", "True", "yes", "preflight")
+        run_mode = (preflight_arg or "").strip()
+        preflight = run_mode in ("1", "true", "True", "yes", "preflight")
 
         if repo_root_arg and os.path.isdir(repo_root_arg):
             sys.path.insert(0, repo_root_arg)
+
+        from ip_orch.core.model_factory import ModelFactory
+
+        device = ModelFactory.resolve_device()
+        if run_mode == "device":
+            logger.info("IPORCH_DEVICE=%s", device)
+            return
 
         from ase import Atoms
 
@@ -55,9 +63,8 @@ def main() -> None:
             wrap_linear_energy_correction,
             wrap_reference_energy_correction,
         )
-        from ip_orch.core.model_factory import ModelFactory
 
-        calc = ModelFactory.create(model_name_arg, models_path=models_path_arg)
+        calc = ModelFactory.create(model_name_arg, device=device, models_path=models_path_arg)
 
         if (linear_a is None) ^ (linear_b is None):
             raise ValueError("Provide both a and b (or neither).")

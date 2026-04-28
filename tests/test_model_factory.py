@@ -32,6 +32,12 @@ def test_register_model_builder():
         ModelFactory._REGISTRY = registry
 
 
+def test_resolve_device_honors_explicit_device():
+    """Expose the device selection used when creating calculators."""
+
+    assert ModelFactory.resolve_device("cpu") == "cpu"
+
+
 def test_model_factory_loads_entry_point_builders_once():
     """Load plugin builders from the ip_orch.model_builders entry point group."""
 

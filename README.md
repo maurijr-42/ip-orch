@@ -123,7 +123,9 @@ ip-orch --run examples/calculators_test.py --models mace-mp,orb-v3
 
 Taking into consideration that Machine Learning Interatomic Potentials can be trained with different datasets, their predicted absolute energies may not be directly comparable due to shifts in reference energy. To address this, `IP-Orch` provides an optional reference energy correction scheme.
 
-This correction computes element-wise reference energies using the same MLIP (e.g., isolated atoms in a large non-periodic box) and subtracts their contribution from the total energy of a structure, based on its composition. The set of elements can be specified via the `--correction_elements` flag, in which case the reference energies are automatically evaluated from the MLIP itself. This approach aligns the energy zero across different models, enabling consistent comparison of quantities such as formation, surface, and interaction energies. This correction can also be combined with an optional linear adjustment of the energy (via `--energy-linear-a`, `--energy-linear-b`, and `--energy-linear-mode`) to account for systematic scaling differences between models.
+This correction computes element-wise reference energies using the same MLIP (e.g., isolated atoms in a large non-periodic box) and subtracts their contribution from the total energy of a structure, based on its composition. The set of elements can be specified via the `--correction_elements` flag. By default, the reference energies are evaluated from the MLIP itself. Alternatively, `--reference-energy-source precomputed` reads bundled values from `ip_orch/scripts/reference_energies.csv`, avoiding the isolated-atom preflight. This approach aligns the energy zero across different models, enabling consistent comparison of quantities such as formation, surface, and interaction energies. This correction can also be combined with an optional linear adjustment of the energy (via `--energy-linear-a`, `--energy-linear-b`, and `--energy-linear-mode`) to account for systematic scaling differences between models.
+
+GRACE, MatRIS, and M3GNet calculators are not used for computed isolated-atom reference energies. They also do not have bundled precomputed reference energies in `reference_energies.csv`.
 
 ```bash
 # Linear correction
@@ -137,6 +139,20 @@ ip-orch --run examples/calculators_test.py \
 ip-orch --run examples/calculators_test.py \
         --envs mace \
         --correction_elements Cu
+
+# Element-reference shift from bundled precomputed values
+ip-orch --run examples/calculators_test.py \
+        --envs mace \
+        --reference-energy-source precomputed
+
+# Optionally limit the bundled references to selected elements
+ip-orch --run examples/calculators_test.py \
+        --envs mace \
+        --reference-energy-source precomputed \
+        --correction_elements Cu
+
+# Check whether a model has precomputed references for selected elements
+ip-orch --check-elements mace-mp C,Cu
 
 # Disable any correction
 ip-orch --run examples/calculators_test.py \

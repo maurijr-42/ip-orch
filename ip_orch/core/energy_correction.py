@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from collections.abc import Iterable
 from typing import Literal, TypeVar
@@ -7,6 +8,7 @@ from typing import Literal, TypeVar
 LinearCorrectionMode = Literal["total_energy", "per_atom"]
 
 TCalc = TypeVar("TCalc")
+logger = logging.getLogger(__name__)
 
 
 def apply_linear_correction(
@@ -64,6 +66,20 @@ def compute_element_reference_energy_shift(
     return shift
 
 
+def _format_reference_energy_usage(symbols: Iterable[str], element_energies: dict[str, float]) -> tuple[str, float]:
+    counts = Counter(symbols)
+    parts = []
+    shift = 0.0
+    for sym in sorted(counts):
+        if sym not in element_energies:
+            raise KeyError(f"Missing reference energy for element {sym!r}.")
+        value = float(element_energies[sym])
+        count = counts[sym]
+        shift += count * value
+        parts.append(f"{sym}={value:.4f} eV (n={count})")
+    return " | ".join(parts), shift
+
+
 def wrap_reference_energy_correction(
     calc: TCalc,
     *,
@@ -103,18 +119,21 @@ def wrap_reference_energy_correction(
             if atoms is None:
                 return
 
-            shift = compute_element_reference_energy_shift(
+            usage, shift = _format_reference_energy_usage(
                 atoms.get_chemical_symbols(), element_energies=element_energies_local
             )
+            logger.info("reference energy correction used: %s | shift=%.4f eV", usage, shift)
 
             if "energy" in self.results:
                 raw = self.results["energy"]
                 self.results["energy_mlip"] = raw
+                self.results["reference_energy_shift"] = shift
                 self.results["energy"] = raw - shift
 
             if "free_energy" in self.results:
                 raw = self.results["free_energy"]
                 self.results["free_energy_mlip"] = raw
+                self.results["reference_free_energy_shift"] = shift
                 self.results["free_energy"] = raw - shift
 
         def __getattr__(self, name):

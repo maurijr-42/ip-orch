@@ -1,5 +1,4 @@
 import pandas as pd
-import matplotlib.pyplot as plt
 
 cols = ["model", "index", "element", "energy", "status", "error"]
 
@@ -12,14 +11,16 @@ df["energy"] = pd.to_numeric(df["energy"], errors="coerce")
 filtered = df[df["status"] == "ok"]
 
 aux = df[
-    (df["model"] != 'grace-1l-oam') &
-    (df["model"] != 'grace-2l-mp-r6') &
-    (df["model"] != 'grace-2l-oam') &
-    (df["model"] != 'matris-10m-mp') &
-    (df["model"] != 'matris-10m-oam') &
-    (df["model"] != 'm3gnet')
+    (df["model"] != "grace-1l-oam")
+    & (df["model"] != "grace-2l-mp-r6")
+    & (df["model"] != "grace-2l-oam")
+    & (df["model"] != "matris-10m-mp")
+    & (df["model"] != "matris-10m-oam")
+    & (df["model"] != "m3gnet")
 ]
 
-final = (aux.pivot(index=["index", "element"], columns="model", values="energy").reset_index().sort_values("index").round(4))
+final = (
+    aux.pivot(index=["index", "element"], columns="model", values="energy").reset_index().sort_values("index").round(4)
+)
 
-final.to_csv('reference_energies.csv',index=False)
+final.to_csv("reference_energies.csv", index=False)

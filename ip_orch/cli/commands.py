@@ -23,6 +23,12 @@ from ..config.config_store import (
     save_config,
     set_model_status,
 )
+from ..core.reference_energies import (
+    check_reference_elements,
+    is_reference_energy_computable,
+    load_precomputed_reference_energies,
+    supported_reference_elements,
+)
 from .env_utils import (
     _current_conda_env,
     _discover_conda_envs,
@@ -49,6 +55,7 @@ console = Console()
 class _RunJob:
     env_name: str
     model_name: str
+    device: str
     cmd: list[str]
     cmd_display: str
     extra: str = ""
@@ -80,6 +87,19 @@ def _worker_resource_path() -> str:
 
 
 def _format_worker_command(cmd: list[str], worker_path: str) -> str:
+    cmd = list(cmd)
+    try:
+        worker_idx = cmd.index(worker_path)
+        tail = cmd[worker_idx + 1 :]
+        if len(tail) >= 11:
+            if tail[8]:
+                tail[8] = _summarize_elements_arg(tail[8])
+            if tail[9]:
+                tail[9] = _summarize_json_arg(tail[9])
+            cmd = cmd[: worker_idx + 1] + tail
+    except ValueError:
+        pass
+
     cmd_display = " ".join(cmd)
     try:
         worker_idx = cmd.index(worker_path)
@@ -90,9 +110,28 @@ def _format_worker_command(cmd: list[str], worker_path: str) -> str:
     return cmd_display
 
 
+def _summarize_elements_arg(elements_arg: str) -> str:
+    elements = _parse_elements(elements_arg)
+    if len(elements) <= 8:
+        return elements_arg
+    return f"<{len(elements)} elements>"
+
+
+def _summarize_json_arg(json_arg: str) -> str:
+    try:
+        parsed = json.loads(json_arg)
+    except Exception:
+        return "<reference-energy-json>"
+    if isinstance(parsed, dict):
+        return f"<{len(parsed)} reference energies>"
+    return "<reference-energy-json>"
+
+
 def _reference_energy_summary(element_energies) -> str:
     if not element_energies:
         return ""
+    if len(element_energies) > 8:
+        return "\nreference energy correction: precomputed values loaded"
     parts = []
     for k, v in sorted(element_energies.items()):
         try:
@@ -100,6 +139,59 @@ def _reference_energy_summary(element_energies) -> str:
         except Exception:
             parts.append(f"{k}={v} eV")
     return "\nreference energy correction: " + " | ".join(parts)
+
+
+def _parse_elements(elements) -> list[str]:
+    if isinstance(elements, (list, tuple)):
+        return [str(e).strip() for e in elements if str(e).strip()]
+    if not elements:
+        return []
+    return [e.strip() for e in str(elements).split(",") if e.strip()]
+
+
+def _periodic_elements() -> list[str]:
+    try:
+        from ase.data import chemical_symbols
+
+        return [symbol for symbol in chemical_symbols[1:] if symbol]
+    except Exception:
+        return []
+
+
+def _element_status_table(supported: set[str], requested: set[str] | None = None, *, groups: int = 3) -> Table:
+    elements = _periodic_elements()
+    if not elements:
+        elements = sorted(supported | (requested or set()))
+
+    table = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan")
+    for idx in range(groups):
+        table.add_column("element", style="cyan")
+        table.add_column("status")
+        if idx < groups - 1:
+            table.add_column("", no_wrap=True)
+
+    chunk_size = (len(elements) + groups - 1) // groups
+    chunks = [elements[idx * chunk_size : (idx + 1) * chunk_size] for idx in range(groups)]
+    for row_idx in range(chunk_size):
+        row = []
+        for group_idx, chunk in enumerate(chunks):
+            if row_idx < len(chunk):
+                element = chunk[row_idx]
+                if element in supported:
+                    status = Text("supported", style="green")
+                else:
+                    status = Text("missing", style="red")
+                if requested is not None and element in requested:
+                    element_text = Text(element, style="bold cyan")
+                else:
+                    element_text = Text(element, style="cyan")
+                row.extend([element_text, status])
+            else:
+                row.extend(["", ""])
+            if group_idx < groups - 1:
+                row.append("")
+        table.add_row(*row)
+    return table
 
 
 def _run_subprocess(cmd: list[str], *, capture_output: bool = False) -> subprocess.CompletedProcess:
@@ -153,6 +245,30 @@ def cmd_models(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_check_elements(args: argparse.Namespace) -> int:
+    elements = _parse_elements(getattr(args, "elements", None))
+    model = getattr(args, "model", "")
+    supported = supported_reference_elements(model)
+    title = f"{model} | supported elements for reference energy"
+    requested = set(elements) if elements else None
+
+    if not supported:
+        table = _element_status_table(set(), requested=requested)
+        notes = [f"No precomputed reference energies are available for model {model!r}."]
+        if not is_reference_energy_computable(model):
+            notes.append("This model family also cannot compute isolated-atom reference energies.")
+        else:
+            notes.append("It may still work with --reference-energy-source computed.")
+        console.print(Panel(table, title=title, subtitle="\n".join(notes), border_style="red"))
+        return 1
+
+    table = _element_status_table(set(supported), requested=requested)
+    _, missing = check_reference_elements(model, elements) if elements else ([], [])
+    border_style = "red" if missing else "green"
+    console.print(Panel(table, title=title, border_style=border_style))
+    return 1 if missing else 0
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     cfg = load_config()
     pairs = _dedup_pairs(cfg.get("full_models", []))
@@ -191,6 +307,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     linear_mode = getattr(args, "energy_linear_mode", None) or "total_energy"
     elements = getattr(args, "correction_elements", None)
     no_energy_corr = bool(getattr(args, "no_energy_correction", False))
+    reference_energy_source = getattr(args, "reference_energy_source", None) or "computed"
     linear_cfg_path = getattr(args, "energy_linear_config", None)
     if linear_cfg_path:
         try:
@@ -205,6 +322,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 linear_mode = linear_cfg.get("mode", linear_mode) or linear_mode
             if elements is None and not no_energy_corr:
                 elements = linear_cfg.get("correction_elements", None)
+            reference_energy_source = linear_cfg.get("reference_energy_source", reference_energy_source)
         except Exception as exc:
             console.print(f"[red]Failed to read --energy-linear-config: {exc}")
             return 2
@@ -213,16 +331,20 @@ def cmd_run(args: argparse.Namespace) -> int:
         linear_a = None
         linear_b = None
         elements = None
+        reference_energy_source = "computed"
 
     if (linear_a is None) ^ (linear_b is None):
         console.print("[red]Provide both --energy-linear-a and --energy-linear-b (or neither).")
         return 2
-    if isinstance(elements, (list, tuple)):
-        elements = ",".join(str(e).strip() for e in elements if str(e).strip())
-    elements_enabled = bool(elements)
+    element_list = _parse_elements(elements)
+    elements = ",".join(element_list)
+    reference_enabled = bool(elements) or reference_energy_source == "precomputed"
     linear_enabled = linear_a is not None and linear_b is not None
     if linear_enabled and linear_mode not in ("total_energy", "per_atom"):
         console.print("[red]--energy-linear-mode must be 'total_energy' or 'per_atom'.")
+        return 2
+    if reference_energy_source not in ("computed", "precomputed"):
+        console.print("[red]--reference-energy-source must be 'computed' or 'precomputed'.")
         return 2
 
     repo_root = _package_parent_path()
@@ -254,66 +376,145 @@ def cmd_run(args: argparse.Namespace) -> int:
             repo_root,
         ]
 
+    def build_worker_mode_command(base_cmd: list[str], mode: str) -> list[str]:
+        cmd = list(base_cmd)
+        cmd.extend(["", "", "total_energy", "", "", mode])
+        return cmd
+
+    def resolve_job_device(base_cmd: list[str]) -> tuple[Optional[str], Optional[_RunResult]]:
+        try:
+            res = _run_subprocess(build_worker_mode_command(base_cmd, "device"), capture_output=True)
+        except Exception as exc:
+            return None, _RunResult("", "", 1, stderr=str(exc), preflight_failed=True)
+        if res.returncode != 0:
+            return None, _RunResult(
+                "",
+                "",
+                res.returncode,
+                stdout=res.stdout or "",
+                stderr=res.stderr or "",
+                preflight_failed=True,
+            )
+        for line in (res.stdout or "").splitlines():
+            if line.startswith("IPORCH_DEVICE="):
+                return line.split("=", 1)[1].strip() or "unknown", None
+        return "unknown", None
+
     def prepare_job(env_name: str, model_name: str) -> tuple[Optional[_RunJob], Optional[_RunResult]]:
         cmd = build_base_command(env_name, model_name)
         element_energies = None
-        if elements_enabled:
-            # Preflight to compute per-element reference energies inside the MLIP env,
-            # so we can show the correction term in the panel.
-            preflight_cmd = list(cmd)
-            preflight_cmd.extend(
-                [
-                    "" if linear_a is None else str(linear_a),
-                    "" if linear_b is None else str(linear_b),
-                    str(linear_mode),
-                    str(elements),
-                    "",  # element_energies_json (computed in preflight)
-                    "preflight",
-                ]
-            )
-            try:
-                pre = _run_subprocess(preflight_cmd, capture_output=True)
-            except Exception as exc:
+        job_element_list = list(element_list)
+        worker_element_list = list(element_list)
+        if reference_enabled and reference_energy_source == "precomputed" and not job_element_list:
+            job_element_list = supported_reference_elements(model_name)
+            if not job_element_list:
                 return None, _RunResult(
                     env_name=env_name,
                     model_name=model_name,
                     returncode=1,
-                    stderr=str(exc),
+                    stderr=f"No precomputed reference energies are available for model {model_name!r}.",
                     preflight_failed=True,
                 )
-            if pre.returncode != 0:
+        job_elements = ",".join(job_element_list)
+        worker_elements = ",".join(worker_element_list)
+
+        if reference_enabled:
+            if reference_energy_source == "precomputed":
+                try:
+                    element_energies = load_precomputed_reference_energies(model_name, job_element_list)
+                except Exception as exc:
+                    return None, _RunResult(
+                        env_name=env_name,
+                        model_name=model_name,
+                        returncode=1,
+                        stderr=str(exc),
+                        preflight_failed=True,
+                    )
+            elif not is_reference_energy_computable(model_name):
                 return None, _RunResult(
                     env_name=env_name,
                     model_name=model_name,
-                    returncode=pre.returncode,
-                    stdout=pre.stdout or "",
-                    stderr=pre.stderr or "",
+                    returncode=1,
+                    stderr=(
+                        f"Reference energies cannot be computed for {model_name!r}. "
+                        "Use a model with isolated-atom support; no precomputed values are available for "
+                        "GRACE, MatRIS, or M3GNet."
+                    ),
                     preflight_failed=True,
                 )
-            for line in (pre.stdout or "").splitlines():
-                if line.startswith("IPORCH_ELEMENT_ENERGIES="):
-                    try:
-                        element_energies = json.loads(line.split("=", 1)[1])
-                    except Exception:
-                        element_energies = None
-                    break
+            else:
+                device, device_error = resolve_job_device(cmd)
+                if device_error:
+                    device_error.env_name = env_name
+                    device_error.model_name = model_name
+                    return None, device_error
+                # Preflight to compute per-element reference energies inside the MLIP env,
+                # so we can show the correction term in the panel.
+                preflight_cmd = list(cmd)
+                preflight_cmd.extend(
+                    [
+                        "" if linear_a is None else str(linear_a),
+                        "" if linear_b is None else str(linear_b),
+                        str(linear_mode),
+                        str(job_elements),
+                        "",  # element_energies_json (computed in preflight)
+                        "preflight",
+                    ]
+                )
+                try:
+                    pre = _run_subprocess(preflight_cmd, capture_output=True)
+                except Exception as exc:
+                    return None, _RunResult(
+                        env_name=env_name,
+                        model_name=model_name,
+                        returncode=1,
+                        stderr=str(exc),
+                        preflight_failed=True,
+                    )
+                if pre.returncode != 0:
+                    return None, _RunResult(
+                        env_name=env_name,
+                        model_name=model_name,
+                        returncode=pre.returncode,
+                        stdout=pre.stdout or "",
+                        stderr=pre.stderr or "",
+                        preflight_failed=True,
+                    )
+                for line in (pre.stdout or "").splitlines():
+                    if line.startswith("IPORCH_ELEMENT_ENERGIES="):
+                        try:
+                            element_energies = json.loads(line.split("=", 1)[1])
+                        except Exception:
+                            element_energies = None
+                        break
+        if not (reference_enabled and reference_energy_source == "computed"):
+            device, device_error = resolve_job_device(cmd)
+            if device_error:
+                device_error.env_name = env_name
+                device_error.model_name = model_name
+                return None, device_error
 
-        if linear_enabled or elements_enabled:
+        if linear_enabled or reference_enabled:
             cmd.extend(
                 [
                     "" if linear_a is None else str(linear_a),
                     "" if linear_b is None else str(linear_b),
                     str(linear_mode),
-                    "" if not elements else str(elements),
+                    "" if not worker_elements else str(worker_elements),
                     "" if not element_energies else json.dumps(element_energies),
                     "",  # preflight flag (empty = normal run)
                 ]
             )
-        header = f"{_clean_env(env_name).upper()} → {model_name}"
+        header = f"{_clean_env(env_name).upper()} → {model_name} | device = {device}"
         cmd_display = _format_worker_command(cmd, worker_path)
         extra = _reference_energy_summary(element_energies)
         return _RunJob(
-            env_name=env_name, model_name=model_name, cmd=cmd, cmd_display=f"{header}\n{cmd_display}", extra=extra
+            env_name=env_name,
+            model_name=model_name,
+            device=device or "unknown",
+            cmd=cmd,
+            cmd_display=f"{header}\n{cmd_display}",
+            extra=extra,
         ), None
 
     def persist_status(model_name: str, returncode: int) -> None:
@@ -345,7 +546,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         for env_name, model_name in selected_pairs:
             job, preflight_error = prepare_job(env_name, model_name)
             if preflight_error:
-                console.print(f"[red]Failed to preflight element energies for {env_name} ({model_name}).")
+                console.print(f"[red]Failed to prepare reference energies for {env_name} ({model_name}).")
                 if preflight_error.stdout:
                     console.print(preflight_error.stdout)
                 if preflight_error.stderr:
@@ -369,7 +570,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     for env_name, model_name in selected_pairs:
         job, preflight_error = prepare_job(env_name, model_name)
         if preflight_error:
-            console.print(f"[red]Failed to preflight element energies for {env_name} ({model_name}).")
+            console.print(f"[red]Failed to prepare reference energies for {env_name} ({model_name}).")
             if preflight_error.stdout:
                 console.print(preflight_error.stdout)
             if preflight_error.stderr:

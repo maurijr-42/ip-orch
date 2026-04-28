@@ -3,7 +3,14 @@ import os
 import subprocess
 from unittest.mock import patch
 
-from ip_orch.cli.commands import _package_parent_path, _worker_resource_path, cmd_add, cmd_models, cmd_run
+from ip_orch.cli.commands import (
+    _package_parent_path,
+    _worker_resource_path,
+    cmd_add,
+    cmd_check_elements,
+    cmd_models,
+    cmd_run,
+)
 from ip_orch.cli.main import main
 
 
@@ -61,6 +68,17 @@ def test_main_forwards_parallel(mock_cmd_run):
     assert args.models_path == "/home/p.zanineli/pretrained"
 
 
+@patch("ip_orch.cli.main.cmd_check_elements", return_value=0)
+def test_main_routes_check_elements(mock_cmd_check_elements):
+    """Dispatch --check-elements to the element support command."""
+
+    assert main(["--check-elements", "mace-mp", "C,Cu"]) == 0
+
+    args = mock_cmd_check_elements.call_args.args[0]
+    assert args.model == "mace-mp"
+    assert args.elements == "C,Cu"
+
+
 @patch("ip_orch.cli.commands.console.print")
 @patch("ip_orch.cli.commands.set_model_status")
 @patch("ip_orch.cli.commands._python_for_env", return_value="/env/python")
@@ -100,7 +118,7 @@ def test_cmd_run_parallel_executes_all_models(
 
     assert cmd_run(args) == 0
 
-    assert mock_run_subprocess.call_count == 2
+    assert mock_run_subprocess.call_count == 4
     assert mock_set_model_status.call_count == 2
 
 
@@ -127,7 +145,10 @@ def test_cmd_run_sequential_uses_streaming_subprocess_output(
         "models_path": "/models",
         "envs_base_dir": "/envs",
     }
-    mock_run_subprocess.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+    mock_run_subprocess.side_effect = [
+        subprocess.CompletedProcess(args=[], returncode=0, stdout="IPORCH_DEVICE=cpu\n", stderr=""),
+        subprocess.CompletedProcess(args=[], returncode=0),
+    ]
     args = argparse.Namespace(
         script="script.py",
         envs="env1",
@@ -143,9 +164,153 @@ def test_cmd_run_sequential_uses_streaming_subprocess_output(
 
     assert cmd_run(args) == 0
 
-    mock_run_subprocess.assert_called_once()
+    assert mock_run_subprocess.call_count == 2
     assert mock_run_subprocess.call_args.kwargs["capture_output"] is False
+    run_panel = mock_print.call_args_list[1].args[0]
+    assert "ENV1 → orb-v3 | device = cpu" in run_panel.renderable
     mock_set_model_status.assert_called_once_with("orb-v3", "ok")
+
+
+@patch("ip_orch.cli.commands.console.print")
+@patch("ip_orch.cli.commands.set_model_status")
+@patch("ip_orch.cli.commands._python_for_env", return_value="/env/python")
+@patch("ip_orch.cli.commands._worker_resource_path", return_value="/pkg/worker.py")
+@patch("ip_orch.cli.commands._package_parent_path", return_value="/pkg")
+@patch("ip_orch.cli.commands.load_config")
+@patch("ip_orch.cli.commands._run_subprocess")
+def test_cmd_run_precomputed_reference_energies_skip_preflight(
+    mock_run_subprocess,
+    mock_load_config,
+    mock_package_parent_path,
+    mock_worker_resource_path,
+    mock_python_for_env,
+    mock_set_model_status,
+    mock_print,
+):
+    """Use the bundled CSV reference energies instead of computing isolated atoms."""
+
+    mock_load_config.return_value = {
+        "full_models": [["env1", "mace-mp"]],
+        "models_path": "/models",
+        "envs_base_dir": "/envs",
+    }
+    mock_run_subprocess.side_effect = [
+        subprocess.CompletedProcess(args=[], returncode=0, stdout="IPORCH_DEVICE=cpu\n", stderr=""),
+        subprocess.CompletedProcess(args=[], returncode=0),
+    ]
+    args = argparse.Namespace(
+        script="script.py",
+        envs="env1",
+        models=None,
+        energy_linear_config=None,
+        energy_linear_a=None,
+        energy_linear_b=None,
+        energy_linear_mode=None,
+        correction_elements="C",
+        no_energy_correction=False,
+        reference_energy_source="precomputed",
+        parallel=1,
+    )
+
+    assert cmd_run(args) == 0
+
+    assert mock_run_subprocess.call_count == 2
+    cmd = mock_run_subprocess.call_args.args[0]
+    assert '"C": -1.6918' in cmd[11]
+
+
+@patch("ip_orch.cli.commands.console.print")
+@patch("ip_orch.cli.commands.set_model_status")
+@patch("ip_orch.cli.commands._python_for_env", return_value="/env/python")
+@patch("ip_orch.cli.commands._worker_resource_path", return_value="/pkg/worker.py")
+@patch("ip_orch.cli.commands._package_parent_path", return_value="/pkg")
+@patch("ip_orch.cli.commands.load_config")
+@patch("ip_orch.cli.commands._run_subprocess")
+def test_cmd_run_precomputed_reference_energies_without_elements_enables_all_supported(
+    mock_run_subprocess,
+    mock_load_config,
+    mock_package_parent_path,
+    mock_worker_resource_path,
+    mock_python_for_env,
+    mock_set_model_status,
+    mock_print,
+):
+    """Treat --reference-energy-source precomputed as enabling reference correction."""
+
+    mock_load_config.return_value = {
+        "full_models": [["env1", "mace-mp"]],
+        "models_path": "/models",
+        "envs_base_dir": "/envs",
+    }
+    mock_run_subprocess.side_effect = [
+        subprocess.CompletedProcess(args=[], returncode=0, stdout="IPORCH_DEVICE=cpu\n", stderr=""),
+        subprocess.CompletedProcess(args=[], returncode=0),
+    ]
+    args = argparse.Namespace(
+        script="script.py",
+        envs="env1",
+        models=None,
+        energy_linear_config=None,
+        energy_linear_a=None,
+        energy_linear_b=None,
+        energy_linear_mode=None,
+        correction_elements=None,
+        no_energy_correction=False,
+        reference_energy_source="precomputed",
+        parallel=1,
+    )
+
+    assert cmd_run(args) == 0
+
+    cmd = mock_run_subprocess.call_args.args[0]
+    assert cmd[10] == ""
+    assert '"Cu":' in cmd[11]
+    run_panel = mock_print.call_args_list[1].args[0]
+    assert "<89 reference energies>" in run_panel.renderable
+    assert '"Cu":' not in run_panel.renderable
+
+
+@patch("ip_orch.cli.commands.console.print")
+@patch("ip_orch.cli.commands.set_model_status")
+@patch("ip_orch.cli.commands._python_for_env", return_value="/env/python")
+@patch("ip_orch.cli.commands._worker_resource_path", return_value="/pkg/worker.py")
+@patch("ip_orch.cli.commands._package_parent_path", return_value="/pkg")
+@patch("ip_orch.cli.commands.load_config")
+@patch("ip_orch.cli.commands._run_subprocess")
+def test_cmd_run_rejects_computed_reference_energies_for_grace(
+    mock_run_subprocess,
+    mock_load_config,
+    mock_package_parent_path,
+    mock_worker_resource_path,
+    mock_python_for_env,
+    mock_set_model_status,
+    mock_print,
+):
+    """Do not try to compute isolated atom references for unsupported calculator families."""
+
+    mock_load_config.return_value = {
+        "full_models": [["env1", "grace-2l-oam"]],
+        "models_path": "/models",
+        "envs_base_dir": "/envs",
+    }
+    args = argparse.Namespace(
+        script="script.py",
+        envs="env1",
+        models=None,
+        energy_linear_config=None,
+        energy_linear_a=None,
+        energy_linear_b=None,
+        energy_linear_mode=None,
+        correction_elements="C",
+        no_energy_correction=False,
+        reference_energy_source="computed",
+        parallel=1,
+    )
+
+    assert cmd_run(args) == 2
+
+    mock_run_subprocess.assert_not_called()
+    mock_set_model_status.assert_called_once_with("grace-2l-oam", "broken")
 
 
 @patch("ip_orch.cli.commands.console.print")
@@ -171,12 +336,10 @@ def test_cmd_run_preflight_failure_marks_model_broken(
         "models_path": "/models",
         "envs_base_dir": "/envs",
     }
-    mock_run_subprocess.return_value = subprocess.CompletedProcess(
-        args=[],
-        returncode=9,
-        stdout="",
-        stderr="preflight failed",
-    )
+    mock_run_subprocess.side_effect = [
+        subprocess.CompletedProcess(args=[], returncode=0, stdout="IPORCH_DEVICE=cpu\n", stderr=""),
+        subprocess.CompletedProcess(args=[], returncode=9, stdout="", stderr="preflight failed"),
+    ]
     args = argparse.Namespace(
         script="script.py",
         envs="env1",
@@ -236,6 +399,17 @@ def test_cmd_run_parallel_summary_includes_parallel_notice(
 
     first_panel = mock_print.call_args_list[0].args[0]
     assert "IP-Orch: starting execution | running up to 2 models in parallel" in first_panel.renderable
+
+
+@patch("ip_orch.cli.commands.console.print")
+def test_cmd_check_elements_reports_missing_elements(mock_print):
+    """Check element support using the precomputed reference table."""
+
+    assert cmd_check_elements(argparse.Namespace(model="mace-mp", elements="C,Og")) == 1
+
+    panel = mock_print.call_args.args[0]
+    assert panel.title == "mace-mp | supported elements for reference energy"
+    assert str(panel.border_style) == "red"
 
 
 def test_worker_resource_path():

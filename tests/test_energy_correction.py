@@ -102,3 +102,30 @@ def test_wrap_reference_energy_correction_subtracts_element_baseline():
 
     assert atoms.get_potential_energy() == pytest.approx(1.0)
     assert atoms.calc.results["energy_mlip"] == pytest.approx(5.0)
+
+
+def test_wrap_reference_energy_correction_logs_elements_used(caplog):
+    """Report only the elements present in the evaluated Atoms object."""
+
+    ase = pytest.importorskip("ase")
+    from ase.calculators.calculator import Calculator, all_changes
+
+    class ConstantEnergyCalculator(Calculator):
+        implemented_properties = ["energy"]
+
+        def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
+            super().calculate(atoms, properties, system_changes)
+            self.results = {"energy": 5.0}
+
+    atoms = ase.Atoms("Cu", positions=[(0, 0, 0)])
+    atoms.calc = wrap_reference_energy_correction(
+        ConstantEnergyCalculator(),
+        element_energies={"Cu": -0.9286, "H": -1.159, "O": -2.0815},
+    )
+
+    with caplog.at_level("INFO", logger="ip_orch.core.energy_correction"):
+        assert atoms.get_potential_energy() == pytest.approx(5.9286)
+
+    assert "Cu=-0.9286 eV (n=1)" in caplog.text
+    assert "H=" not in caplog.text
+    assert "O=" not in caplog.text

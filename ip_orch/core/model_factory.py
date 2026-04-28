@@ -50,6 +50,12 @@ class ModelFactory:
         return os.environ.get("MLIP_DEVICE", "cpu")
 
     @classmethod
+    def resolve_device(cls, device: Optional[str] = None) -> str:
+        """Return the device string that will be passed to model builders."""
+
+        return cls._device_to_str(device)
+
+    @classmethod
     def register(cls, key: str, builder: ModelBuilder, *aliases: str) -> None:
         """Register a calculator builder.
 
@@ -91,7 +97,7 @@ class ModelFactory:
         if builder is None:
             return None
 
-        resolved_device = cls._device_to_str(device)
+        resolved_device = cls.resolve_device(device)
         base_path = os.path.expanduser(models_path) if models_path else os.path.expanduser("~/.ip-orch/models")
         context = ModelBuildContext(device=resolved_device, base_path=base_path, models_path=models_path)
         return builder(context)

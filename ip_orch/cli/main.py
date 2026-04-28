@@ -3,7 +3,7 @@ import sys
 
 from rich.console import Console
 
-from .commands import cmd_add, cmd_configure, cmd_models, cmd_remove, cmd_run
+from .commands import cmd_add, cmd_check_elements, cmd_configure, cmd_models, cmd_remove, cmd_run
 
 console = Console()
 
@@ -20,6 +20,7 @@ def main(argv: list[str] = None) -> int:
         "  ip-orch --run script.py --envs mace,orb\n"
         "  ip-orch --run script.py --models mace-mp,orb-v3\n"
         "  ip-orch --supported-models mace\n"
+        "  ip-orch --check-elements mace-mp C,Cu\n"
     )
     parser = argparse.ArgumentParser(
         prog="ip-orch",
@@ -27,7 +28,7 @@ def main(argv: list[str] = None) -> int:
         usage=(
             "ip-orch [-h]\n"
             "               (--add ENV MODEL | --remove ENV [MODEL ...] | --run SCRIPT |\n"
-            "                --supported-models [SUBSTR] | --configure)\n"
+            "                --supported-models [SUBSTR] | --check-elements MODEL [ELEMENTS] | --configure)\n"
             "               [--models-path PATH]\n"
             "               [--envs ENV1,ENV2 | --models ALIAS1,ALIAS2]"
         ),
@@ -55,6 +56,12 @@ def main(argv: list[str] = None) -> int:
         const="",
         metavar="SUBSTR",
         help="List supported model aliases (optionally filter by name)",
+    )
+    grp.add_argument(
+        "--check-elements",
+        nargs="+",
+        metavar="MODEL_OR_ELEMENTS",
+        help="Check precomputed reference-energy support for MODEL and optional comma-separated elements",
     )
     grp.add_argument("--configure", action="store_true", help="Interactive environment discovery and setup")
 
@@ -136,6 +143,13 @@ def main(argv: list[str] = None) -> int:
         action="store_true",
         help="Disable any energy correction (ignores linear correction and --correction_elements)",
     )
+    parser.add_argument(
+        "--reference-energy-source",
+        dest="reference_energy_source",
+        choices=["computed", "precomputed"],
+        default="computed",
+        help="Source for --correction_elements: computed isolated atoms or scripts/reference_energies.csv",
+    )
 
     raw_argv = argv if argv is not None else sys.argv[1:]
     if "--available-models" in raw_argv:
@@ -180,6 +194,7 @@ def main(argv: list[str] = None) -> int:
                 energy_linear_mode=args.energy_linear_mode,
                 correction_elements=args.correction_elements,
                 no_energy_correction=args.no_energy_correction,
+                reference_energy_source=args.reference_energy_source,
                 parallel=args.parallel,
                 models_path=args.models_path,
             )
@@ -187,6 +202,10 @@ def main(argv: list[str] = None) -> int:
         if getattr(args, "supported_models", None) is not None:
             a = argparse.Namespace(contains=(args.supported_models or None))
             return cmd_models(a)
+        if args.check_elements:
+            model = args.check_elements[0]
+            elements = args.check_elements[1] if len(args.check_elements) > 1 else None
+            return cmd_check_elements(argparse.Namespace(model=model, elements=elements))
         if args.configure:
             return cmd_configure(argparse.Namespace())
         parser.print_help()
