@@ -118,13 +118,20 @@ def build_grace_2l_oam(ctx: ModelBuildContext) -> Any:
 @model_builder("orb_v3")
 def build_orb_v3(ctx: ModelBuildContext) -> Any:
     from orb_models.forcefield import pretrained
-    from orb_models.forcefield.inference.calculator import ORBCalculator
 
-    orbff, atoms_adapter = pretrained.orb_v3_conservative_inf_omat(
+    try:
+        from orb_models.forcefield.inference.calculator import ORBCalculator
+    except ImportError:
+        from orb_models.forcefield.calculator import ORBCalculator
+
+    result = pretrained.orb_v3_conservative_inf_omat(
         device=ctx.device,
         precision="float32-high",
     )
-    return ORBCalculator(orbff, atoms_adapter=atoms_adapter, device=ctx.device)
+    if isinstance(result, tuple):
+        orbff, atoms_adapter = result
+        return ORBCalculator(orbff, atoms_adapter=atoms_adapter, device=ctx.device)
+    return ORBCalculator(result, device=ctx.device)
 
 
 @model_builder("dpa_3_1_3m_ft")
@@ -300,6 +307,21 @@ def build_chgnet(ctx: ModelBuildContext) -> Any:
 
 @model_builder("m3gnet")
 def build_m3gnet(ctx: ModelBuildContext) -> Any:
+    os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
+
     from m3gnet.models import M3GNetCalculator
 
-    return M3GNetCalculator()
+    signature = inspect.signature(M3GNetCalculator)
+    potential_parameter = signature.parameters.get("potential")
+    if potential_parameter is None or potential_parameter.default is not inspect.Parameter.empty:
+        return M3GNetCalculator()
+
+    from m3gnet.models import M3GNet, Potential
+
+    model = M3GNet.load()
+    try:
+        potential = Potential(model=model)
+    except TypeError:
+        potential = Potential(model)
+
+    return M3GNetCalculator(potential=potential)

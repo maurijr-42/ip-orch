@@ -1,10 +1,3 @@
-"""Compute isolated-atom energies and append all results to one CSV file.
-
-Run with IP-Orch, for example:
-
-    ip-orch --run ip_orch/scripts/isolated_atom_energies.py --models mace-mp,orb-v3
-"""
-
 import csv
 import logging
 import os
@@ -26,7 +19,7 @@ CSV_COLUMNS = [
 ]
 
 CELL_ANGSTROM = 20.0
-RESULTS_CSV = Path(__file__).resolve().parent / "results" / "isolated_atom_energies.csv"
+RESULTS_CSV = Path(__file__).resolve().parent / "isolated_atom_energies.csv"
 
 
 def _isolated_atom(symbol):
