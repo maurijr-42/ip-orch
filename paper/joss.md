@@ -60,7 +60,7 @@ By configuring the package in a default environment with its respective interpre
 
 Some projects have recently been created to address the decentralization of these packages, such as Janus-Core and Rootstock, each adopting distinct approaches. janus-core provides closed pipelines within a single Python environment, installing MLIPs as “extras” - which can simplify usage, but tightly couple dependencies and may lead to conflicts between models, versions, and additional packages. In contrast, Rootstock is HPC-oriented, with pre-configured environments maintained by developers and isolated execution via subprocess/socket (i-PI), including integration with LAMMPS; however, this requires centralized setup and introduces a small IPC overhead.
 
-IP-Orch focuses on a complementary advantage: orchestrating the same user ASE script across multiple environments and models, locally and without IPC/server layers, maintaining minimal overhead and transparent failure handling. Rather than prescribing workflows, it registers (env, model) pairs, provides interactive discovery, and enables explicit selection through flags such as `--envs` and `--models`, executing each combination “in-process” in the target environment. This design avoids dependency conflicts by construction, preserves the scientific logic within the user’s script, and facilitates reproducible benchmarking across MLIPs and environments. Thus, IP-Orch complements solutions like janus-core (closed pipelines within a single stack) and Rootstock (strong isolation and LAMMPS integration in HPC), prioritizing a local-first, portable approach with frictionless side-by-side comparisons.
+IP-Orch focuses on a complementary advantage: orchestrating the same user ASE script across multiple environments and models, locally and without IPC/server layers, maintaining minimal overhead and transparent failure handling. Rather than prescribing workflows, it registers (env, model) pairs, provides interactive discovery, and enables explicit selection through flags such as `--envs` and `--models`, executing each combination “in-process” in the target environment. Selected model evaluations can also be dispatched concurrently with the `--parallel` option when hardware resources permit, reducing benchmark wall time without changing the user script. This design avoids dependency conflicts by construction, preserves the scientific logic within the user’s script, and facilitates reproducible benchmarking across MLIPs and environments. Thus, IP-Orch complements solutions like janus-core (closed pipelines within a single stack) and Rootstock (strong isolation and LAMMPS integration in HPC), prioritizing a local-first, portable approach with frictionless side-by-side comparisons.
 
 
 # Software design
@@ -71,33 +71,45 @@ IP-Orch is designed to run the same user-defined ASE script across multiple mode
 
 ![IP-Orch architecture](iporch-architecture.svg)
 
-This is implemented through a lightweight and modular architecture, as shown in Figure \label{fig:arch}. A central `ModelFactory` creates ASE calculators from simple aliases, while the CLI handles environment discovery, model selection, and execution. During runtime, IP-Orch iterates over selected (environment, model) pairs and runs the user script inside each environment using `conda run`, ensuring isolation and avoiding dependency conflicts. By delegating performance to the underlying MLIPs, IP-Orch focuses on providing a transparent and low-friction framework for reproducible benchmarking and comparison across models.
+This is implemented through a lightweight and modular architecture, as shown in Figure \label{fig:arch}. A central `ModelFactory` creates ASE calculators from simple aliases, while the CLI handles environment discovery, model selection, and execution. During runtime, IP-Orch iterates over selected (environment, model) pairs and runs the user script inside each environment using `conda run`, ensuring isolation and avoiding dependency conflicts. Execution can be sequential or concurrent across selected pairs through a bounded parallel worker pool. By delegating performance to the underlying MLIPs, IP-Orch focuses on providing a transparent and low-friction framework for reproducible benchmarking and comparison across models.
 
 ## Reference energy correction
 
-Optionally, one can apply two post-processing corrections to the energy returned by the MLIP used. Let $E_{\mathrm{mlip}}$ be the energy predicted by the model for a structure with $N$ atoms and composition ${n_\alpha}$ (number of atoms of element $\alpha$).
+IP-Orch can apply optional post-processing corrections to the energy returned by a MLIP. Let $E_{\mathrm{mlip}}$ be the model energy for a structure with $N$ atoms and composition $\{n_\alpha\}$, where $n_\alpha$ is the number of atoms of element $\alpha$.
 
-**(1) Linear correction:** if the parameters $a$ and $b$ are provided, the energy is corrected using a linear relation in one of two modes:
-
-- Total energy: $\qquad E\prime = a\cdot E_{\mathrm{mlip}} + b$
-- Per atom energy: $\qquad \varepsilon_{\mathrm{mlip}} = \frac{E_{\mathrm{mlip}}}{N},\qquad \varepsilon\prime = a\cdot\varepsilon_{\mathrm{mlip}} + b,\qquad E\prime = N\cdot\varepsilon\prime$
-
-Note that, in `per_atom` mode, this expression is equivalent to:
-
-$E\prime = a\cdot E_{\mathrm{mlip}} + b\cdot N.$
-
-If $a$ or $b$ is not provided, no linear correction is applied and $E\prime = E_{\mathrm{mlip}}$.
-
-**(2) Element-wise reference energy correction**
-
-If a list of elements $\{\alpha\}$ is provided (via `--correction_elements`), or if a dictionary of energies is explicitly given, a reference energy is computed for each element using the MLIP itself: $E_{\mathrm{ref}}(\alpha) \equiv E_{\mathrm{mlip}}(\text{isolated atom of }\alpha)$, where the isolated atom is evaluated in a large non-periodic box.
-
-For a given structure, the reference energy shift ($\Delta E_{\mathrm{ref}}$) and the final corrected energy ($E_{\mathrm{corr}}$) are defined as:
+**Linear correction.** When coefficients $a$ and $b$ are provided, IP-Orch first applies an optional linear transformation. In total-energy mode,
 
 $$
-\Delta E_{\mathrm{ref}} = \sum_{\alpha} n_\alpha\cdot E_{\mathrm{ref}}(\alpha) \xrightarrow{} E_{\mathrm{corr}} = E\prime - \Delta E_{\mathrm{ref}}.
+E_{\mathrm{lin}} = a E_{\mathrm{mlip}} + b .
 $$
 
+In per-atom mode, the same transformation is applied to $E_{\mathrm{mlip}}/N$ and then scaled back to the total energy,
+
+$$
+E_{\mathrm{lin}} = N\left(a\frac{E_{\mathrm{mlip}}}{N} + b\right) = aE_{\mathrm{mlip}} + bN .
+$$
+
+If no linear parameters are provided, $E_{\mathrm{lin}} = E_{\mathrm{mlip}}$.
+
+**Atomic reference correction.** Absolute MLIP energies can differ by element-dependent offsets. IP-Orch removes these offsets using one reference energy per element, $E_{\mathrm{ref}}(\alpha)$. These values can either be computed with the same MLIP from isolated atoms in a large non-periodic box,
+
+$$
+E_{\mathrm{ref}}(\alpha) = E_{\mathrm{mlip}}(\text{isolated atom of } \alpha),
+$$
+
+or loaded from a precomputed reference table when isolated-atom calculations are not desired. For a structure with composition $\{n_\alpha\}$, the reference shift is
+
+$$
+\Delta E_{\mathrm{ref}} = \sum_{\alpha} n_\alpha E_{\mathrm{ref}}(\alpha),
+$$
+
+and the corrected energy reported to the user is
+
+$$
+E_{\mathrm{corr}} = E_{\mathrm{lin}} - \Delta E_{\mathrm{ref}}.
+$$
+
+If the atomic reference correction is not enabled, $\Delta E_{\mathrm{ref}} = 0$ and $E_{\mathrm{corr}} = E_{\mathrm{lin}}$.
 
 <!-- # Research impact statement
 

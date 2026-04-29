@@ -158,7 +158,7 @@ def _periodic_elements() -> list[str]:
         return []
 
 
-def _element_status_table(supported: set[str], requested: set[str] | None = None, *, groups: int = 3) -> Table:
+def _element_status_table(supported: set[str], requested: Optional[set[str]] = None, *, groups: int = 3) -> Table:
     elements = _periodic_elements()
     if not elements:
         elements = sorted(supported | (requested or set()))

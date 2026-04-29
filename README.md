@@ -117,7 +117,12 @@ ip-orch --run examples/calculators_test.py --envs mace,orb
 
 # 2) Select specific model aliases
 ip-orch --run examples/calculators_test.py --models mace-mp,orb-v3
+
+# 3) Run up to N selected models concurrently
+ip-orch --run examples/calculators_test.py --models mace-mp,orb-v3 --parallel 2
 ```
+
+By default, IP-Orch runs selected models sequentially. The `--parallel N` option runs up to `N` selected models concurrently, which can reduce benchmark wall time when the available hardware resources can support multiple simultaneous model evaluations.
 
 ### Reference energy correction
 

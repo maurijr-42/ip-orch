@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from collections import Counter
 from collections.abc import Iterable
 from typing import Literal, TypeVar
@@ -8,7 +7,6 @@ from typing import Literal, TypeVar
 LinearCorrectionMode = Literal["total_energy", "per_atom"]
 
 TCalc = TypeVar("TCalc")
-logger = logging.getLogger(__name__)
 
 
 def apply_linear_correction(
@@ -119,10 +117,9 @@ def wrap_reference_energy_correction(
             if atoms is None:
                 return
 
-            usage, shift = _format_reference_energy_usage(
+            _, shift = _format_reference_energy_usage(
                 atoms.get_chemical_symbols(), element_energies=element_energies_local
             )
-            logger.info("reference energy correction used: %s | shift=%.4f eV", usage, shift)
 
             if "energy" in self.results:
                 raw = self.results["energy"]
