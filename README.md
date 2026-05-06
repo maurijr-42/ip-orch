@@ -68,6 +68,39 @@ cd ip-orch
 pip install .
 ```
 
+### Docker image with MACE and Orb
+
+The repository includes `Dockerfile.mlips`, which builds a CUDA-capable image with:
+
+- `ip-orch` installed in the base Python environment.
+- MACE models available through `/opt/iporch-envs/mace`.
+- Orb models available through `/opt/iporch-envs/orb`.
+- A preconfigured `~/.ip-orch/config.json` registering `mace-mp`, `mace-mp-0`, `mace-mpa-0`, `orb-v3`, `orb-v2`, and `orb-v2-mptrj`.
+
+Build locally:
+
+```bash
+docker build --platform linux/amd64 -f Dockerfile.mlips -t ip-orch-mlips .
+```
+
+Run:
+
+```bash
+docker run --platform linux/amd64 --gpus all --rm -it ip-orch-mlips
+```
+
+Inside the container:
+
+```bash
+ip-orch --run /workspace/ip-orch/examples/calculators_test.py --envs mace,orb
+```
+
+The GitHub Actions workflow in `.github/workflows/docker.yml` builds this image on pull requests and pushes it to GitHub Container Registry on pushes to `main` and version tags. The default image name is:
+
+```bash
+ghcr.io/pedrozanineli/ip-orch:latest
+```
+
 ## Usage
 
 ### Configure and register models

@@ -1,0 +1,85 @@
+FROM pytorch/pytorch:2.10.0-cuda12.6-cudnn9-runtime
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    IPORCH_ENVS_DIR=/opt/iporch-envs \
+    IPORCH_CONFIG_DIR=/root/.ip-orch
+
+WORKDIR /workspace
+
+ARG MACE_REPO=https://github.com/ACEsuit/mace.git
+ARG MACE_REF=main
+ARG ORB_REPO=https://github.com/orbital-materials/orb-models.git
+ARG ORB_REF=main
+ARG INSTALL_CUML=false
+ARG INSTALL_MACE_CUEQ=false
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+        gcc \
+        g++ \
+        wget && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Orb requires Python >= 3.12.
+RUN python -c "import sys; assert sys.version_info >= (3, 12), sys.version"
+
+COPY . ./ip-orch
+
+RUN git clone "$MACE_REPO" ./mace && \
+    cd ./mace && \
+    git checkout "$MACE_REF" && \
+    cd /workspace && \
+    git clone "$ORB_REPO" ./orb-models && \
+    cd ./orb-models && \
+    git checkout "$ORB_REF"
+
+# Install the orchestrator in the base environment, where the ip-orch CLI runs.
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    python -m pip install virtualenv && \
+    python -m pip install ./ip-orch
+
+# Install each MLIP in its own Python environment. ip-orch dispatches workers
+# through /opt/iporch-envs/<env>/bin/python.
+RUN python -m virtualenv "$IPORCH_ENVS_DIR/mace" && \
+    "$IPORCH_ENVS_DIR/mace/bin/python" -m pip install --upgrade pip setuptools wheel && \
+    "$IPORCH_ENVS_DIR/mace/bin/python" -m pip install ./ip-orch ./mace && \
+    if [ "$INSTALL_MACE_CUEQ" = "true" ]; then \
+        "$IPORCH_ENVS_DIR/mace/bin/python" -m pip install "./mace[cueq-cuda-12]"; \
+    fi
+
+RUN python -m virtualenv "$IPORCH_ENVS_DIR/orb" && \
+    "$IPORCH_ENVS_DIR/orb/bin/python" -m pip install --upgrade pip setuptools wheel && \
+    "$IPORCH_ENVS_DIR/orb/bin/python" -m pip install ./ip-orch ./orb-models && \
+    if [ "$INSTALL_CUML" = "true" ]; then \
+        "$IPORCH_ENVS_DIR/orb/bin/python" -m pip install "cuml-cu12==25.2.*"; \
+    fi
+
+RUN mkdir -p "$IPORCH_CONFIG_DIR" && \
+    printf '%s\n' \
+      '{' \
+      '  "base_env": "base",' \
+      '  "models_path": "",' \
+      '  "envs_base_dir": "/opt/iporch-envs",' \
+      '  "full_models": [' \
+      '    ["mace", "mace-mp"],' \
+      '    ["mace", "mace-mp-0"],' \
+      '    ["mace", "mace-mpa-0"],' \
+      '    ["orb", "orb-v3"],' \
+      '    ["orb", "orb-v2"],' \
+      '    ["orb", "orb-v2-mptrj"]' \
+      '  ],' \
+      '  "model_status": {}' \
+      '}' \
+      > "$IPORCH_CONFIG_DIR/config.json"
+
+RUN ip-orch --supported-models mace && \
+    ip-orch --supported-models orb && \
+    "$IPORCH_ENVS_DIR/mace/bin/python" -c "import mace; print('mace', getattr(mace, '__version__', 'installed'))" && \
+    "$IPORCH_ENVS_DIR/orb/bin/python" -c "import orb_models; print('orb_models', getattr(orb_models, '__version__', 'installed'))"
+
+CMD ["/bin/bash"]
