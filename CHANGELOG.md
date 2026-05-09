@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] - 2026-04-26
 
 ### Added
+- Added a programmatic Python API through `IPOrch`, including direct callable execution for `run(...)` and class methods for CLI-equivalent actions.
+- Added notebook-friendly callable execution by materializing Python logic functions into temporary worker scripts.
 - Added `ase` to package dependencies.
 - Added a registry-based `ModelFactory.register(...)` API and `ip_orch.model_builders` entry point support.
 - Added `--parallel N` for running selected model benchmarks concurrently.
@@ -22,6 +24,9 @@ All notable changes to this project will be documented in this file.
 - Added pytest collection metadata so `pytest -vv` displays each test's docstring summary alongside the test id.
 - Ignored the default graphene bilayer CSV output in `.gitignore`.
 - Fixed CLI alias canonicalization so underscore and dash variants map to the same supported model alias.
+- Validated model aliases during `add_model` so unsupported aliases are rejected with a warning.
+- Preserved path-like virtualenv names such as `./mace` and resolved them to their Python executables instead of passing them to Conda as environment names.
+- Sanitized notebook Matplotlib inline backends in worker subprocesses by defaulting to `MPLBACKEND=Agg`.
 
 ## [Unreleased] - 2026-04-21
 

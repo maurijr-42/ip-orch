@@ -42,3 +42,10 @@ def test_clean_env_strips_dot_prefix_used_by_hidden_conda_envs():
     """Normalize hidden conda env directory names before saving configuration."""
 
     assert _clean_env(" .orb ") == "orb"
+
+
+def test_clean_env_preserves_relative_environment_paths():
+    """Do not turn path-like virtualenv names such as ./mace into /mace."""
+
+    assert _clean_env(" ./mace ") == "./mace"
+    assert _clean_env("../mace") == "../mace"

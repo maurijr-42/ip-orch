@@ -71,18 +71,52 @@ def _match_known_token(env_name: str) -> str:
 
 
 def _python_for_env(env_name: str, base_dir: str) -> str:
+    candidates = []
+    if _is_path_like_env(env_name):
+        for root in _path_like_roots(env_name):
+            candidates.extend(_python_candidates(root))
+
     if not base_dir:
-        return ""
+        return _first_executable(candidates)
+
     base = os.path.expanduser(base_dir)
     roots = [os.path.join(base, env_name), os.path.join(base, f".{env_name}")]
-    candidates = []
+    if _is_path_like_env(env_name):
+        roots.append(os.path.join(base, os.path.basename(os.path.normpath(env_name))))
+        roots.append(os.path.join(base, f".{os.path.basename(os.path.normpath(env_name))}"))
     for root in roots:
-        candidates.extend(
-            [
-                os.path.join(root, "bin", "python"),
-                os.path.join(root, "Scripts", "python.exe"),
-            ]
-        )
+        candidates.extend(_python_candidates(root))
+    return _first_executable(candidates)
+
+
+def _is_path_like_env(env_name: str) -> bool:
+    env_name = env_name or ""
+    return (
+        env_name.startswith(("./", "../", "~/", "/"))
+        or os.path.sep in env_name
+        or bool(os.path.altsep and os.path.altsep in env_name)
+    )
+
+
+def _python_candidates(root: str) -> list[str]:
+    return [
+        os.path.join(root, "bin", "python"),
+        os.path.join(root, "Scripts", "python.exe"),
+    ]
+
+
+def _path_like_roots(env_name: str) -> list[str]:
+    root = os.path.expanduser(env_name)
+    if not os.path.isabs(root):
+        return [
+            os.path.abspath(root),
+            os.path.abspath(os.path.join(os.getcwd(), "..", root)),
+            root,
+        ]
+    return [root]
+
+
+def _first_executable(candidates: list[str]) -> str:
     for p in candidates:
         if os.path.isfile(p) and os.access(p, os.X_OK):
             return p

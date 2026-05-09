@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 from ip_orch.cli.commands import (
     _package_parent_path,
+    _run_subprocess,
+    _subprocess_env,
     _worker_resource_path,
     cmd_add,
     cmd_check_elements,
@@ -21,6 +23,47 @@ def test_cmd_add(mock_add_model):
     args = argparse.Namespace(env="myenv", model="mace-mp-0")
     assert cmd_add(args) == 0
     mock_add_model.assert_called_once_with("myenv", "mace-mp-0")
+
+
+@patch("ip_orch.cli.commands.console.print")
+@patch("ip_orch.cli.commands.add_model")
+def test_cmd_add_rejects_unknown_model_alias(mock_add_model, mock_print):
+    """Warn and refuse to register unsupported model aliases."""
+
+    args = argparse.Namespace(env="mace", model="mace-mpa")
+
+    assert cmd_add(args) == 1
+
+    mock_add_model.assert_not_called()
+    assert "Unknown model alias" in str(mock_print.call_args_list[0].args[0])
+
+
+def test_subprocess_env_replaces_notebook_matplotlib_backend(monkeypatch):
+    """Do not leak Jupyter's inline backend into worker subprocesses."""
+
+    monkeypatch.setenv("MPLBACKEND", "module://matplotlib_inline.backend_inline")
+
+    assert _subprocess_env()["MPLBACKEND"] == "Agg"
+
+
+def test_subprocess_env_preserves_explicit_non_notebook_matplotlib_backend(monkeypatch):
+    """Respect explicit Matplotlib backends that can be used outside notebooks."""
+
+    monkeypatch.setenv("MPLBACKEND", "svg")
+
+    assert _subprocess_env()["MPLBACKEND"] == "svg"
+
+
+@patch("ip_orch.cli.commands.subprocess.run")
+def test_run_subprocess_passes_sanitized_environment(mock_run, monkeypatch):
+    """Pass the cleaned subprocess env to worker commands."""
+
+    monkeypatch.setenv("MPLBACKEND", "module://matplotlib_inline.backend_inline")
+    mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+
+    _run_subprocess(["python", "worker.py"], capture_output=True)
+
+    assert mock_run.call_args.kwargs["env"]["MPLBACKEND"] == "Agg"
 
 
 @patch("ip_orch.cli.commands.console.print")
@@ -169,6 +212,59 @@ def test_cmd_run_sequential_uses_streaming_subprocess_output(
     run_panel = mock_print.call_args_list[1].args[0]
     assert "ENV1 → orb-v3 | device = cpu" in run_panel.renderable
     mock_set_model_status.assert_called_once_with("orb-v3", "ok")
+
+
+@patch("ip_orch.cli.commands.console.print")
+@patch("ip_orch.cli.commands.set_model_status")
+@patch("ip_orch.cli.commands._worker_resource_path", return_value="/pkg/worker.py")
+@patch("ip_orch.cli.commands._package_parent_path", return_value="/pkg")
+@patch("ip_orch.cli.commands.load_config")
+@patch("ip_orch.cli.commands._run_subprocess")
+def test_cmd_run_uses_python_from_path_like_virtualenv(
+    mock_run_subprocess,
+    mock_load_config,
+    mock_package_parent_path,
+    mock_worker_resource_path,
+    mock_set_model_status,
+    mock_print,
+    tmp_path,
+    monkeypatch,
+):
+    """Treat configured env paths like ./mace as virtualenv paths, not Conda env names."""
+
+    python_bin = tmp_path / "mace" / "bin" / "python"
+    python_bin.parent.mkdir(parents=True)
+    python_bin.write_text("#!/usr/bin/env python\n", encoding="utf-8")
+    python_bin.chmod(0o755)
+    monkeypatch.chdir(tmp_path)
+    mock_load_config.return_value = {
+        "full_models": [["./mace", "mace-mp"]],
+        "models_path": "/models",
+        "envs_base_dir": "",
+    }
+    mock_run_subprocess.side_effect = [
+        subprocess.CompletedProcess(args=[], returncode=0, stdout="IPORCH_DEVICE=cpu\n", stderr=""),
+        subprocess.CompletedProcess(args=[], returncode=0),
+    ]
+    args = argparse.Namespace(
+        script="script.py",
+        envs="./mace",
+        models=None,
+        energy_linear_config=None,
+        energy_linear_a=None,
+        energy_linear_b=None,
+        energy_linear_mode=None,
+        correction_elements=None,
+        no_energy_correction=False,
+        reference_energy_source="computed",
+        parallel=1,
+    )
+
+    assert cmd_run(args) == 0
+
+    first_cmd = mock_run_subprocess.call_args_list[0].args[0]
+    assert first_cmd[0] == str(python_bin)
+    assert "conda" not in first_cmd
 
 
 @patch("ip_orch.cli.commands.console.print")

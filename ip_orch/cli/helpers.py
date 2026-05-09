@@ -47,7 +47,10 @@ def _dedup_pairs(pairs: list[list[str]]):
 
 
 def _clean_env(name: str) -> str:
-    return (name or "").strip().lstrip(".")
+    value = (name or "").strip()
+    if value.startswith("./") or value.startswith("../"):
+        return value
+    return value[1:] if value.startswith(".") else value
 
 
 # Known calculator env names and default model suggestions

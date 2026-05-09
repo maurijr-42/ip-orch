@@ -34,12 +34,14 @@ from .env_utils import (
     _discover_conda_envs,
     _discover_envs_from_dir,
     _guess_envs_dir,
+    _is_path_like_env,
     _match_known_token,
     _python_for_env,
 )
 from .helpers import (
     DEFAULT_MODELS_BY_ENV,
     PACKAGE_VARIANTS,
+    _alias_match_token,
     _canonical_alias,
     _clean_env,
     _dedup_pairs,
@@ -195,12 +197,33 @@ def _element_status_table(supported: set[str], requested: Optional[set[str]] = N
 
 
 def _run_subprocess(cmd: list[str], *, capture_output: bool = False) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, text=True, capture_output=capture_output)
+    return subprocess.run(cmd, text=True, capture_output=capture_output, env=_subprocess_env())
+
+
+def _subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    backend = env.get("MPLBACKEND", "")
+    if not backend or "matplotlib_inline" in backend or "backend_inline" in backend:
+        env["MPLBACKEND"] = "Agg"
+    return env
+
+
+def _supported_alias(model: str) -> Optional[str]:
+    norm = _alias_match_token(model)
+    for alias in _get_aliases().keys():
+        if _alias_match_token(alias) == norm:
+            return alias
+    return None
 
 
 def cmd_add(args: argparse.Namespace) -> int:
-    add_model(args.env, args.model)
-    console.print(f"Added: env='{args.env}' model='{args.model}'")
+    model = _supported_alias(args.model)
+    if model is None:
+        console.print(f"[yellow]Unknown model alias: {args.model!r}.")
+        console.print("Use 'ip-orch --supported-models' or IPOrch().supported_models() to list supported aliases.")
+        return 1
+    add_model(args.env, model)
+    console.print(f"Added: env='{args.env}' model='{model}'")
     return 0
 
 
@@ -362,6 +385,11 @@ def cmd_run(args: argparse.Namespace) -> int:
                 models_path,
                 repo_root,
             ]
+        if _is_path_like_env(env_name):
+            raise FileNotFoundError(
+                f"Could not find a Python executable for environment path {env_name!r}. "
+                "Expected bin/python or Scripts/python.exe."
+            )
         return [
             "conda",
             "run",
@@ -401,7 +429,16 @@ def cmd_run(args: argparse.Namespace) -> int:
         return "unknown", None
 
     def prepare_job(env_name: str, model_name: str) -> tuple[Optional[_RunJob], Optional[_RunResult]]:
-        cmd = build_base_command(env_name, model_name)
+        try:
+            cmd = build_base_command(env_name, model_name)
+        except Exception as exc:
+            return None, _RunResult(
+                env_name=env_name,
+                model_name=model_name,
+                returncode=1,
+                stderr=str(exc),
+                preflight_failed=True,
+            )
         element_energies = None
         job_element_list = list(element_list)
         worker_element_list = list(element_list)

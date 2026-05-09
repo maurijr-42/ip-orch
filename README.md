@@ -30,6 +30,7 @@
 - [Usage](#usage)
     - [Configure and register models](#configure-and-register-models)
     - [Run a script across models](#run-a-script-across-models)
+    - [Use IP-Orch from Python](#use-ip-orch-from-python)
     - [Saving model results](#saving-model-results)
     - [Reference energy correction](#reference-energy-correction)
 - [Contributions and suggestions](#contributions-and-suggestions)
@@ -156,6 +157,58 @@ ip-orch --run examples/calculators_test.py --models mace-mp,orb-v3 --parallel 2
 ```
 
 By default, IP-Orch runs selected models sequentially. The `--parallel N` option runs up to `N` selected models concurrently, which can reduce benchmark wall time when the available hardware resources can support multiple simultaneous model evaluations.
+
+### Use IP-Orch from Python
+
+IP-Orch can also be called from a Python script, without going through the command-line parser. The same configured environments and models are used. The first argument can be either a script path or a Python function that receives `calculator_name, ase_calculator`:
+
+```python
+from ase.build import bulk
+
+from ip_orch import IPOrch
+
+def calculators_test(calculator_name, ase_calculator):
+    atoms = bulk("Cu", "fcc", a=3.6)
+    atoms.calc = ase_calculator
+    energy = atoms.get_potential_energy()
+    print(f"{calculator_name}: {energy:.6f} eV")
+
+orch = IPOrch()
+orch.run(
+    calculators_test,
+    models=["mace-mp", "orb-v3"],
+    parallel=2,
+)
+```
+
+When passing a function from a notebook, IP-Orch reconstructs a temporary worker script from the function source and simple globals such as imports and constants. If the function depends on complex objects created in earlier cells, define those objects inside the function or use the path-based form instead.
+
+Selections can use either `envs=[...]` or `models=[...]`, matching the CLI behavior. A non-zero status code is returned by default; pass `raise_on_error=True` to raise a `RuntimeError` instead. The path-based form is also supported:
+
+```python
+from ip_orch import IPOrch, RunOptions
+
+options = RunOptions(
+    script="examples/calculators_test.py",
+    envs=["mace"],
+    correction_elements=["C", "Cu"],
+    reference_energy_source="precomputed",
+)
+
+IPOrch().run_with_options(options, raise_on_error=True)
+```
+
+The other CLI actions are available as methods too. These methods print their command output and return `None`, so they do not echo a trailing `0` in notebooks or interactive scripts.
+
+```python
+from ip_orch import IPOrch
+
+orch = IPOrch()
+orch.add_model("mace", "mace-mp")
+orch.supported_models("mace")
+orch.check_elements("mace-mp", ["C", "Cu"])
+orch.remove_model("mace", "mace-mp")
+```
 
 ### Reference energy correction
 

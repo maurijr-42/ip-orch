@@ -54,6 +54,34 @@ def test_python_for_env_checks_visible_and_hidden_env_directories(tmp_path):
     assert _python_for_env("orb", str(tmp_path)) == str(hidden_python)
 
 
+def test_python_for_env_resolves_direct_relative_env_path(tmp_path, monkeypatch):
+    """Resolve a configured virtualenv path such as ./mace without Conda."""
+
+    python_bin = tmp_path / "mace" / "bin" / "python"
+    python_bin.parent.mkdir(parents=True)
+    python_bin.write_text("#!/usr/bin/env python\n", encoding="utf-8")
+    python_bin.chmod(0o755)
+
+    monkeypatch.chdir(tmp_path)
+
+    assert _python_for_env("./mace", "") == str(python_bin)
+
+
+def test_python_for_env_resolves_sibling_relative_env_path(tmp_path, monkeypatch):
+    """Resolve ./mace when called from a project directory next to the virtualenv."""
+
+    python_bin = tmp_path / "mace" / "bin" / "python"
+    python_bin.parent.mkdir(parents=True)
+    python_bin.write_text("#!/usr/bin/env python\n", encoding="utf-8")
+    python_bin.chmod(0o755)
+    project = tmp_path / "ip-orch"
+    project.mkdir()
+
+    monkeypatch.chdir(project)
+
+    assert _python_for_env("./mace", "") == str(python_bin)
+
+
 def test_match_known_token_detects_model_family_from_env_name():
     """Infer default model family suggestions from environment names."""
 
