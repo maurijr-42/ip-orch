@@ -28,7 +28,7 @@ on:
       orb_ref:
         description: "Orb git ref to build"
         required: false
-        default: "main"
+        default: "v0.5.5"
       push_image:
         description: "Push image to GHCR"
         required: false
@@ -85,6 +85,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             MACE_REF=${{ inputs.mace_ref || 'main' }}
-            ORB_REF=${{ inputs.orb_ref || 'main' }}
+            ORB_REF=${{ inputs.orb_ref || 'v0.5.5' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
